@@ -2,10 +2,10 @@
 'use client';
 
 import { useAuth } from '@/contexts/AuthContext';
-import LoginPage from './components/LoginPage';
-import InitialChatPage from './components/InitialChatPage';
-import Spinner from './components/Spinner';
-import Protected from './components/Protected';
+import LoginPage from '@/components/auth/LoginPage';
+import MainPage from '@/components/page';
+import Spinner from '@/components/ui/Spinner';
+import Protected from '@/components/layout/Protected';
 
 export default function Home() {
   const { user, loading } = useAuth();
@@ -22,7 +22,7 @@ export default function Home() {
     <>
       {user ? (
         <Protected>
-          <InitialChatPage />
+          <MainPage />
         </Protected>
       ) : (
         <LoginPage />
