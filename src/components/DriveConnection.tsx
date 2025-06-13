@@ -33,6 +33,19 @@ export const DriveConnectionPanel = () => {
     }
   };
 
+  const handleConnect = async () => {
+    try {
+      // Get the OAuth URL
+      const response = await fetch('/api/drive/auth-url');
+      const { url } = await response.json();
+      
+      // Redirect to Google's OAuth page
+      window.location.href = url;
+    } catch (error) {
+      console.error('Error connecting to Drive:', error);
+    }
+  };
+
   return (
     <div className="bg-gray-800 rounded-lg p-4 mb-4">
       {/* Connection Status */}
@@ -75,7 +88,7 @@ export const DriveConnectionPanel = () => {
             </>
           ) : (
             <button
-              onClick={connectDrive}
+              onClick={handleConnect}
               className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm transition-colors"
             >
               Connect Drive

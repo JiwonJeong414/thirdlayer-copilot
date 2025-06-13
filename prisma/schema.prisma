@@ -12,8 +12,8 @@ datasource db {
 model User {
   id          String   @id @default(cuid())
   uid         String   @unique
-  email       String
-  displayName String?
+  email       String   @unique
+  displayName String
   photoURL    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -21,6 +21,7 @@ model User {
   // Relations
   chats               Chat[]
   driveConnection     DriveConnection?
+  documents           Document[]
   documentEmbeddings  DocumentEmbedding[]
 
   @@map("users")
@@ -91,4 +92,20 @@ model DocumentEmbedding {
   // Composite unique constraint to prevent duplicate chunks
   @@unique([fileId, chunkIndex], name: "fileId_chunkIndex")
   @@map("document_embeddings")
+}
+
+model Document {
+  id          String   @id @default(cuid())
+  driveId     String   @unique
+  name        String
+  mimeType    String
+  modifiedTime DateTime
+  size        Int?
+  webViewLink String?
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
 }

@@ -8,20 +8,32 @@ const prisma = new PrismaClient();
 
 export async function POST(request: NextRequest) {
   try {
-    const uid = request.headers.get('uid');
-    if (!uid) {
+    const session = request.cookies.get('session');
+    if (!session) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
+    const { userId } = JSON.parse(session.value);
     const user = await prisma.user.findUnique({
-      where: { uid },
+      where: { id: userId },
       include: {
         driveConnection: true,
       },
     });
 
     if (!user || !user.driveConnection?.isConnected) {
+      console.log('Drive sync failed: User not found or Drive not connected', { userId, hasUser: !!user, hasConnection: !!user?.driveConnection?.isConnected });
       return NextResponse.json({ error: 'Drive not connected' }, { status: 400 });
+    }
+
+    console.log('Starting Drive sync for user:', { userId: user.id });
+    
+    // Check if the access token is expired (using updatedAt as a proxy for expiry)
+    const tokenAge = Date.now() - user.driveConnection.updatedAt.getTime();
+    if (tokenAge > 3600 * 1000) { // Token older than 1 hour
+      console.log('Access token may be expired, attempting to refresh...');
+      // TODO: Implement token refresh logic
+      return NextResponse.json({ error: 'Access token expired. Please reconnect your Drive account.' }, { status: 401 });
     }
 
     const driveService = new GoogleDriveService({
@@ -29,63 +41,68 @@ export async function POST(request: NextRequest) {
       refresh_token: user.driveConnection.refreshToken || undefined,
     });
 
+    console.log('Drive service initialized with token:', {
+      hasAccessToken: !!user.driveConnection.accessToken,
+      hasRefreshToken: !!user.driveConnection.refreshToken,
+      tokenAge: Math.round(tokenAge / 1000 / 60) + ' minutes',
+    });
+
     let allFiles: any[] = [];
     let nextPageToken: string | undefined;
 
-    // Get all files from Drive
     do {
-      const { files, nextPageToken: token } = await driveService.listFiles(50, nextPageToken);
-      allFiles = [...allFiles, ...files];
-      nextPageToken = token;
+      const response = await driveService.listFiles(100, nextPageToken);
+      allFiles = allFiles.concat(response.files);
+      nextPageToken = response.nextPageToken;
     } while (nextPageToken);
 
+    console.log(`Found ${allFiles.length} files in Drive`);
+
+    // Process files and update database
+    const vectorService = new VectorService();
     let processedCount = 0;
     let errorCount = 0;
 
-    // Process each file
     for (const file of allFiles) {
       try {
-        // Check if file is already processed
-        const existingEmbedding = await prisma.documentEmbedding.findFirst({
-          where: {
-            fileId: file.id,
+        // Update or create file record
+        await prisma.document.upsert({
+          where: { driveId: file.id },
+          update: {
+            name: file.name,
+            mimeType: file.mimeType,
+            modifiedTime: new Date(file.modifiedTime),
+            size: file.size ? parseInt(file.size) : null,
+            webViewLink: file.webViewLink,
+            updatedAt: new Date(),
+          },
+          create: {
+            driveId: file.id,
+            name: file.name,
+            mimeType: file.mimeType,
+            modifiedTime: new Date(file.modifiedTime),
+            size: file.size ? parseInt(file.size) : null,
+            webViewLink: file.webViewLink,
             userId: user.id,
+            createdAt: new Date(),
+            updatedAt: new Date(),
           },
         });
 
-        // Skip if already processed and not modified
-        if (existingEmbedding && 
-            existingEmbedding.updatedAt >= new Date(file.modifiedTime)) {
-          continue;
-        }
-
-        // Get file content
-        const content = await driveService.getFileContent(file.id);
-        
-        // Skip empty files
-        if (!content || content.trim().length < 50) {
-          continue;
-        }
-
-        // Generate and store embeddings
-        await VectorService.storeDocumentEmbeddings(
-          user.id,
-          file.id,
-          file.name,
-          content
-        );
-
         processedCount++;
       } catch (error) {
-        console.error(`Error processing file ${file.name}:`, error);
+        console.error('Error processing file:', file.id, error);
         errorCount++;
       }
     }
 
     // Update last sync time
     await prisma.driveConnection.update({
-      where: { id: user.driveConnection.id },
-      data: { lastSyncAt: new Date() },
+      where: { userId: user.id },
+      data: {
+        lastSyncAt: new Date(),
+        updatedAt: new Date(),
+      },
     });
 
     return NextResponse.json({

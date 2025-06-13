@@ -1,9 +1,17 @@
-// src/contexts/ChatContext.tsx - Updated with Drive Integration
+// src/contexts/ChatContext.tsx - Updated with proper model handling
 'use client';
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import { useDrive } from './DriveContext';
+
+interface User {
+  id: string;
+  email: string;
+  displayName: string;
+  photoURL: string;
+  uid: string;  // Add this to match our OAuth implementation
+}
 
 interface Message {
   id: string;
@@ -61,8 +69,8 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
   const [currentChat, setCurrentChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('llama3.2:1b');
-  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [selectedModel, setSelectedModel] = useState('llama3.2:1b'); // Safe default
+  const [availableModels, setAvailableModels] = useState<string[]>(['llama3.2:1b']);
   const [driveSearchEnabled, setDriveSearchEnabled] = useState(true);
 
   useEffect(() => {
@@ -74,7 +82,21 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
 
   const getAuthToken = async () => {
     if (!user) throw new Error('User not authenticated');
-    return await user.getIdToken();
+    // Get the session cookie
+    const response = await fetch('/api/auth/session');
+    if (!response.ok) {
+      throw new Error('Failed to get session');
+    }
+    const { accessToken, user: sessionUser } = await response.json();
+    
+    // Update user data if needed
+    if (sessionUser && sessionUser.uid !== user.uid) {
+      // The user data in the session is different from what we have
+      // This shouldn't happen, but let's handle it gracefully
+      console.warn('Session user data mismatch');
+    }
+    
+    return accessToken;
   };
 
   const fetchModels = async () => {
@@ -87,12 +109,18 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
       });
       const data = await response.json();
       
-      if (data.models) {
+      if (data.models && data.models.length > 0) {
         const modelNames = data.models.map((model: any) => model.name);
         setAvailableModels(modelNames);
+        
+        // Set the first available model as default if current model isn't available
+        if (!modelNames.includes(selectedModel)) {
+          setSelectedModel(modelNames[0]);
+        }
       }
     } catch (error) {
       console.error('Error fetching models:', error);
+      // Keep the default model if fetching fails
     }
   };
 
@@ -195,6 +223,13 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
   const sendMessage = async (content: string) => {
     if (isLoading || !user) return;
 
+    // Validate that we have a chat model selected
+    if (!selectedModel || !availableModels.includes(selectedModel)) {
+      console.error('Invalid model selected:', selectedModel);
+      alert('Please select a valid chat model');
+      return;
+    }
+
     // If no current chat, create one
     if (!currentChat) {
       const chatSummary = content.slice(0, 50) + (content.length > 50 ? '...' : '');
@@ -259,11 +294,9 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
         stream: true,
       };
 
-      // Get the auth token for the Ollama streaming request
-      const token = await getAuthToken();
-      console.log('sendMessage token:', token);
+      console.log('Sending chat request with model:', selectedModel);
 
-      // Use PUT method on /api/chats for Ollama streaming
+      const token = await getAuthToken();
       const response = await fetch('/api/chats', {
         method: 'PUT',
         headers: {

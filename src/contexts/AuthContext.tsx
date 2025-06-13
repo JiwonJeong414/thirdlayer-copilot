@@ -1,24 +1,20 @@
 // src/contexts/AuthContext.tsx
 "use client";
 
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { signInWithPopup, signOut as firebaseSignOut, onAuthStateChanged } from "firebase/auth";
+import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { useRouter } from 'next/navigation';
-import { auth, googleProvider } from "@/lib/firebase";
 
 interface User {
-  uid: string;
+  id: string;
   email: string;
   displayName: string;
   photoURL: string;
-  getIdToken: () => Promise<string>;
 }
 
 interface DriveConnection {
   isConnected: boolean;
   accessToken?: string;
   refreshToken?: string;
-  expiryDate?: number;
 }
 
 interface AuthContextType {
@@ -61,25 +57,31 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const router = useRouter();
 
   const signInWithGoogle = async () => {
+    console.log('Starting Google sign in...');
     setError(null);
     setLoading(true);
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const firebaseUser = result.user;
+      // Get the OAuth URL
+      const response = await fetch('/api/auth/google/url');
+      console.log('Got response:', response.status);
       
-      // Create/update user in your database
-      await fetch('/api/auth/user', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          uid: firebaseUser.uid,
-          email: firebaseUser.email,
-          displayName: firebaseUser.displayName,
-          photoURL: firebaseUser.photoURL,
-        }),
-      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Failed to get OAuth URL:', errorData);
+        throw new Error(errorData.error || 'Failed to get OAuth URL');
+      }
+
+      const data = await response.json();
+      console.log('Got OAuth URL:', data);
+
+      if (!data.url) {
+        console.error('No URL in response:', data);
+        throw new Error('No OAuth URL received');
+      }
+
+      // Redirect to Google's OAuth page
+      console.log('Redirecting to:', data.url);
+      window.location.href = data.url;
     } catch (error) {
       console.error('Sign in error:', error);
       setError((error as Error).message);
@@ -92,27 +94,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setError(null);
     setLoading(true);
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const accessToken = await result.user.getIdToken();
+      // Get the OAuth URL with Drive scopes
+      const response = await fetch('/api/drive/auth-url');
+      const { url } = await response.json();
       
-      // Store Drive credentials
-      const response = await fetch('/api/drive/connect', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          accessToken,
-        }),
-      });
-
-      if (response.ok) {
-        setDriveConnection({
-          isConnected: true,
-          accessToken,
-        });
-      }
+      // Redirect to Google's OAuth page
+      window.location.href = url;
     } catch (error) {
       console.error('Drive connection error:', error);
       setError((error as Error).message);
@@ -124,13 +111,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const disconnectDrive = async () => {
     setError(null);
     try {
-      if (!user) return;
-
       const response = await fetch('/api/drive/disconnect', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${await auth.currentUser?.getIdToken()}`,
-        },
       });
 
       if (response.ok) {
@@ -148,9 +130,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       const response = await fetch('/api/drive/refresh', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${await auth.currentUser?.getIdToken()}`,
-        },
       });
 
       if (response.ok) {
@@ -170,7 +149,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setError(null);
     setLoading(true);
     try {
-      await firebaseSignOut(auth);
+      await fetch('/api/auth/signout', { method: 'POST' });
       setUser(null);
       setDriveConnection({ isConnected: false });
       router.push('/');
@@ -182,33 +161,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // Check authentication status
+  useEffect(() => {
+    const checkAuthStatus = async () => {
+      try {
+        const response = await fetch('/api/auth/status');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.user) {
+            setUser(data.user);
+          }
+        }
+      } catch (error) {
+        console.error('Error checking auth status:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkAuthStatus();
+  }, []);
+
   // Check Drive connection status
   useEffect(() => {
     const checkDriveConnection = async () => {
       if (!user) return;
 
       try {
-        const token = await auth.currentUser?.getIdToken();
-        console.log('Drive status token:', token);
-        if (!token) {
-          console.warn('No token available for Drive status check');
-          return;
-        }
-
-        const response = await fetch('/api/drive/status', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
-
-        if (response.status === 401) {
-          console.warn('Drive status check received 401 Unauthorized');
-          await firebaseSignOut(auth);
-          setUser(null);
-          setDriveConnection({ isConnected: false });
-          return;
-        }
-
+        const response = await fetch('/api/drive/status');
         if (response.ok) {
           const data = await response.json();
           setDriveConnection(data);
@@ -222,59 +202,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       checkDriveConnection();
     }
   }, [user]);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        try {
-          console.log('Getting Firebase ID token...');
-          const token = await firebaseUser.getIdToken();
-          console.log('Token obtained successfully');
-
-          console.log('Creating/updating user...');
-          const response = await fetch('/api/auth/user', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              email: firebaseUser.email,
-              displayName: firebaseUser.displayName,
-              photoURL: firebaseUser.photoURL,
-            }),
-          });
-
-          const data = await response.json();
-          console.log('User API response:', { status: response.status, data });
-
-          if (response.ok) {
-            setUser({
-              uid: firebaseUser.uid,
-              email: firebaseUser.email!,
-              displayName: firebaseUser.displayName!,
-              photoURL: firebaseUser.photoURL!,
-              getIdToken: async () => await firebaseUser.getIdToken(),
-            });
-          } else {
-            throw new Error(data.error || 'Failed to create/update user');
-          }
-        } catch (error) {
-          console.error('Error in auth state change:', error);
-          setError(error instanceof Error ? error.message : 'Failed to authenticate user');
-          // Sign out the user if there's an authentication error
-          await firebaseSignOut(auth);
-        }
-      } else {
-        console.log('No Firebase user, clearing state');
-        setUser(null);
-        setDriveConnection({ isConnected: false });
-      }
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, []);
 
   return (
     <AuthContext.Provider

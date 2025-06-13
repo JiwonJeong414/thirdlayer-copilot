@@ -1,17 +1,38 @@
 // src/app/components/LoginPage.tsx
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useSearchParams } from 'next/navigation';
 
 export default function LoginPage() {
-  const { signInWithGoogle, error, loading } = useAuth();
+  const { signInWithGoogle, error: authError, loading } = useAuth();
+  const searchParams = useSearchParams();
+  const error = searchParams.get('error');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (error) {
       console.error('Authentication error:', error);
     }
   }, [error]);
+
+  const getErrorMessage = (errorCode: string | null) => {
+    switch (errorCode) {
+      case 'no_code':
+        return 'No authorization code received from Google';
+      case 'invalid_state':
+        return 'Invalid authentication state. Please try again';
+      case 'oauth_error':
+        return 'Google authentication failed. Please try again';
+      case 'auth_failed':
+        return 'Authentication failed. Please try again';
+      case 'oauth_config':
+        return 'OAuth configuration is missing. Please check your environment variables.';
+      default:
+        return authError || 'An error occurred during authentication';
+    }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -27,7 +48,7 @@ export default function LoginPage() {
         
         <div className="mt-8 space-y-6">
           <button
-            onClick={() => signInWithGoogle()}
+            onClick={signInWithGoogle}
             disabled={loading}
             className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -42,10 +63,10 @@ export default function LoginPage() {
             </div>
           </button>
           
-          {error && (
+          {(error || authError || errorMessage) && (
             <div className="rounded-md bg-red-50 p-4">
-              <div className="text-sm text-red-700">
-                Error: {error}
+              <div className="text-sm text-red-700 whitespace-pre-wrap">
+                Error: {errorMessage || getErrorMessage(error)}
               </div>
             </div>
           )}

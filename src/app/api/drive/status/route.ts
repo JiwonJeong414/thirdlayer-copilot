@@ -6,13 +6,14 @@ const prisma = new PrismaClient();
 
 export async function GET(request: NextRequest) {
   try {
-    const uid = request.headers.get('uid');
-    if (!uid) {
+    const session = request.cookies.get('session');
+    if (!session) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
+    const { userId } = JSON.parse(session.value);
     const user = await prisma.user.findUnique({
-      where: { uid },
+      where: { id: userId },
       include: {
         driveConnection: true,
       },

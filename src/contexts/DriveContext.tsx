@@ -64,8 +64,7 @@ export const DriveProvider = ({ children }: { children: ReactNode }) => {
 
   const getAuthToken = async () => {
     if (!user) throw new Error('User not authenticated');
-    // In a real implementation, you'd get the Firebase ID token
-    return 'your-auth-token'; // Replace with actual token logic
+    return await user.getIdToken();
   };
 
   const fetchIndexedFiles = async () => {

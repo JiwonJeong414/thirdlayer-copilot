@@ -7,8 +7,13 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Skip middleware for the verify endpoint to avoid infinite loop
-  if (request.nextUrl.pathname === '/api/auth/verify') {
+  // Skip middleware for public auth endpoints
+  if (
+    request.nextUrl.pathname === '/api/auth/verify' ||
+    request.nextUrl.pathname === '/api/auth/google/url' ||
+    request.nextUrl.pathname === '/api/auth/status' ||
+    request.nextUrl.pathname.startsWith('/api/auth/callback/google')
+  ) {
     return NextResponse.next();
   }
 
@@ -53,5 +58,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: '/api/:path*',
+  matcher: [
+    '/api/:path*',
+  ],
 }; 
