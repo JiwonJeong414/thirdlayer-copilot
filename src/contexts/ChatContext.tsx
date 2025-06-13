@@ -1,8 +1,9 @@
-// src/contexts/ChatContext.tsx
+// src/contexts/ChatContext.tsx - Updated with Drive Integration
 'use client';
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { useAuth } from './AuthContext';
+import { useDrive } from './DriveContext';
 
 interface Message {
   id: string;
@@ -10,6 +11,11 @@ interface Message {
   sender: string;
   timestamp: string;
   images: string[];
+  driveContext?: {
+    fileId: string;
+    fileName: string;
+    similarity: number;
+  }[];
 }
 
 interface Chat {
@@ -26,7 +32,9 @@ interface ChatContextType {
   isLoading: boolean;
   selectedModel: string;
   availableModels: string[];
+  driveSearchEnabled: boolean;
   setSelectedModel: (model: string) => void;
+  setDriveSearchEnabled: (enabled: boolean) => void;
   createNewChat: (summary?: string) => Promise<string>;
   loadChat: (chatId: string) => Promise<void>;
   sendMessage: (content: string) => Promise<void>;
@@ -47,13 +55,15 @@ export const useChat = () => {
 };
 
 export const ChatProvider = ({ children }: { children: ReactNode }) => {
-  const { user } = useAuth();
+  const { user, driveConnection } = useAuth();
+  const { searchDocuments } = useDrive();
   const [chats, setChats] = useState<Chat[]>([]);
   const [currentChat, setCurrentChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState('llama3.2:1b');
   const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [driveSearchEnabled, setDriveSearchEnabled] = useState(true);
 
   useEffect(() => {
     if (user) {
@@ -62,9 +72,19 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [user]);
 
+  const getAuthToken = async () => {
+    if (!user) throw new Error('User not authenticated');
+    return await user.getIdToken();
+  };
+
   const fetchModels = async () => {
     try {
-      const response = await fetch('/api/models');
+      const token = await getAuthToken();
+      const response = await fetch('/api/models', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
       const data = await response.json();
       
       if (data.models) {
@@ -80,7 +100,12 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     if (!user) return;
     
     try {
-      const response = await fetch(`/api/chats?userUid=${user.uid}`);
+      const token = await getAuthToken();
+      const response = await fetch(`/api/chats?userUid=${user.uid}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
       const data = await response.json();
       setChats(data.chats || []);
     } catch (error) {
@@ -92,10 +117,12 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     if (!user) throw new Error('User not authenticated');
 
     try {
+      const token = await getAuthToken();
       const response = await fetch('/api/chats', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
           userUid: user.uid,
@@ -119,7 +146,12 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
 
   const loadChat = async (chatId: string) => {
     try {
-      const response = await fetch(`/api/chats/${chatId}`);
+      const token = await getAuthToken();
+      const response = await fetch(`/api/chats/${chatId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
       const data = await response.json();
       
       if (!response.ok) throw new Error(data.error);
@@ -132,19 +164,22 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const saveMessage = async (content: string, sender: string, images: string[] = []) => {
+  const saveMessage = async (content: string, sender: string, images: string[] = [], driveContext?: any[]) => {
     if (!currentChat) return;
 
     try {
+      const token = await getAuthToken();
       const response = await fetch(`/api/chats/${currentChat.id}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
           content,
           sender,
           images,
+          driveContext,
         }),
       });
 
@@ -171,35 +206,69 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
       }
     }
 
+    let driveContext: any[] = [];
+
+    // Search Drive documents if enabled and connected
+    if (driveSearchEnabled && driveConnection.isConnected) {
+      try {
+        const driveResults = await searchDocuments(content, 3);
+        driveContext = driveResults.map(result => ({
+          fileId: result.fileId,
+          fileName: result.fileName,
+          content: result.content,
+          similarity: result.similarity,
+        }));
+      } catch (error) {
+        console.error('Error searching Drive documents:', error);
+      }
+    }
+
     const userMessage: Message = {
       id: Date.now().toString(),
       sender: 'user',
       content,
       timestamp: new Date().toISOString(),
       images: [],
+      driveContext: driveContext.length > 0 ? driveContext : undefined,
     };
 
     setMessages(prev => [...prev, userMessage]);
     setIsLoading(true);
 
     // Save user message to database
-    await saveMessage(content, 'user');
+    await saveMessage(content, 'user', [], driveContext);
 
     try {
+      // Prepare messages for Ollama, including Drive context
+      let contextualContent = content;
+      
+      if (driveContext.length > 0) {
+        const driveContextText = driveContext
+          .map(ctx => `Document: ${ctx.fileName}\nContent: ${ctx.content.substring(0, 500)}...`)
+          .join('\n\n');
+        
+        contextualContent = `Based on the following documents from your Google Drive:\n\n${driveContextText}\n\nUser question: ${content}`;
+      }
+
       const requestBody = {
         model: selectedModel,
-        messages: [...messages, userMessage].map(msg => ({
+        messages: [...messages, userMessage].map((msg, index) => ({
           role: msg.sender === 'user' ? 'user' : 'assistant',
-          content: msg.content,
+          content: index === messages.length ? contextualContent : msg.content,
         })),
         stream: true,
       };
+
+      // Get the auth token for the Ollama streaming request
+      const token = await getAuthToken();
+      console.log('sendMessage token:', token);
 
       // Use PUT method on /api/chats for Ollama streaming
       const response = await fetch('/api/chats', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify(requestBody),
       });
@@ -221,6 +290,11 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
         content: '',
         timestamp: new Date().toISOString(),
         images: [],
+        driveContext: driveContext.length > 0 ? driveContext.map(ctx => ({
+          fileId: ctx.fileId,
+          fileName: ctx.fileName,
+          similarity: ctx.similarity,
+        })) : undefined,
       };
 
       setMessages(prev => [...prev, assistantMessage]);
@@ -290,7 +364,7 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
       }
 
       // Save assistant message to database
-      await saveMessage(fullContent, selectedModel);
+      await saveMessage(fullContent, selectedModel, [], driveContext);
 
     } catch (error) {
       console.error('Error in sendMessage:', error);
@@ -346,7 +420,9 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
         isLoading,
         selectedModel,
         availableModels,
+        driveSearchEnabled,
         setSelectedModel,
+        setDriveSearchEnabled,
         createNewChat,
         loadChat,
         sendMessage,

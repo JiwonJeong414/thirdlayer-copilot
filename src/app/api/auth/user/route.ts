@@ -6,11 +6,16 @@ const prisma = new PrismaClient();
 
 export async function POST(request: NextRequest) {
   try {
-    const { uid, email, displayName, photoURL } = await request.json();
+    const uid = request.headers.get('uid');
+    if (!uid) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
 
-    if (!uid || !email || !displayName) {
+    const { email, displayName, photoURL } = await request.json();
+
+    if (!email || !displayName) {
       return NextResponse.json(
-        { error: 'UID, email, and display name are required' }, 
+        { error: 'Email and display name are required' }, 
         { status: 400 }
       );
     }

@@ -1,4 +1,4 @@
-// src/components/page.tsx
+// src/components/page.tsx - Updated with Drive Integration
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -19,15 +19,20 @@ import {
   LogOut,
   Menu,
   X,
+  FileText,
+  Cloud,
 } from 'lucide-react';
 import { useChat } from '@/contexts/ChatContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useDrive } from '@/contexts/DriveContext';
+import { DriveConnectionPanel } from './DriveConnection';
 
 export default function MainPage() {
   const [message, setMessage] = useState('');
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showDrivePanel, setShowDrivePanel] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { user, signOut } = useAuth();
+  const { user, signOut, driveConnection } = useAuth();
   
   const {
     chats,
@@ -36,7 +41,9 @@ export default function MainPage() {
     isLoading,
     selectedModel,
     availableModels,
+    driveSearchEnabled,
     setSelectedModel,
+    setDriveSearchEnabled,
     createNewChat,
     loadChat,
     sendMessage,
@@ -86,7 +93,8 @@ export default function MainPage() {
     'Explain quantum computing in simple terms',
     'Write a Python function to reverse a string',
     'What are the benefits of renewable energy?',
-  ];
+    driveConnection.isConnected ? 'Search my documents for project updates' : null,
+  ].filter(Boolean);
 
   return (
     <div className="min-h-screen flex bg-gray-900 text-white">
@@ -109,8 +117,20 @@ export default function MainPage() {
               >
                 <Plus className="w-4 h-4" />
               </button>
+              <button 
+                onClick={() => setShowDrivePanel(!showDrivePanel)}
+                className={`p-1 hover:bg-gray-700 rounded transition-colors ${
+                  driveConnection.isConnected ? 'text-green-400' : 'text-gray-400 hover:text-white'
+                }`}
+                title="Google Drive"
+              >
+                <Cloud className="w-4 h-4" />
+              </button>
             </div>
           </div>
+          
+          {/* Drive Panel */}
+          {showDrivePanel && <DriveConnectionPanel />}
           
           {/* Model Selection */}
           <div className="bg-gray-700 rounded-lg p-3 mb-4">
@@ -138,6 +158,28 @@ export default function MainPage() {
               <ChevronDown className="w-4 h-4 text-gray-400" />
             </div>
           </div>
+
+          {/* Drive Search Toggle */}
+          {driveConnection.isConnected && (
+            <div className="flex items-center justify-between p-3 bg-gray-700 rounded-lg mb-4">
+              <div className="flex items-center space-x-2">
+                <FileText className="w-4 h-4 text-blue-400" />
+                <span className="text-sm text-white">Search Drive</span>
+              </div>
+              <button
+                onClick={() => setDriveSearchEnabled(!driveSearchEnabled)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  driveSearchEnabled ? 'bg-blue-600' : 'bg-gray-600'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    driveSearchEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          )}
 
           {/* Connection Status */}
           <div className="flex items-center space-x-2 text-green-400 bg-green-900 bg-opacity-30 p-2 rounded-lg">
@@ -203,6 +245,12 @@ export default function MainPage() {
                 <Activity className="w-3 h-3 text-green-400" />
                 <span className="text-xs text-green-400">Active</span>
               </div>
+              {driveConnection.isConnected && (
+                <div className="flex items-center space-x-1">
+                  <Cloud className="w-3 h-3 text-blue-400" />
+                  <span className="text-xs text-blue-400">Drive</span>
+                </div>
+              )}
             </div>
           </div>
           
@@ -293,6 +341,15 @@ export default function MainPage() {
                 <span className="bg-gray-700 px-2 py-1 rounded text-xs">
                   {selectedModel}
                 </span>
+                {driveConnection.isConnected && driveSearchEnabled && (
+                  <>
+                    <span>•</span>
+                    <span className="bg-blue-700 px-2 py-1 rounded text-xs flex items-center space-x-1">
+                      <Cloud className="w-3 h-3" />
+                      <span>Drive Search</span>
+                    </span>
+                  </>
+                )}
               </div>
             </div>
             <div className="flex items-center space-x-3">
@@ -319,13 +376,13 @@ export default function MainPage() {
                     Start Chatting with Ollama
                   </h3>
                   <p className="text-gray-400 mb-6 leading-relaxed">
-                    Ask me anything, or try one of these examples:
+                    Ask me anything{driveConnection.isConnected ? ', search your Drive documents,' : ''} or try one of these examples:
                   </p>
                   <div className="space-y-3">
                     {examplePrompts.map((text, idx) => (
                       <button
                         key={idx}
-                        onClick={() => setMessage(text)}
+                        onClick={() => text && setMessage(text)}
                         className="block w-full px-4 py-3 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm text-gray-300 text-left transition-colors"
                       >
                         "{text}"
@@ -357,10 +414,39 @@ export default function MainPage() {
                         <span className="text-xs text-gray-400">
                           {formatTimestamp(msg.timestamp)}
                         </span>
+                        {msg.driveContext && msg.driveContext.length > 0 && (
+                          <span className="bg-blue-700 px-2 py-1 rounded text-xs flex items-center space-x-1">
+                            <FileText className="w-3 h-3" />
+                            <span>{msg.driveContext.length} docs</span>
+                          </span>
+                        )}
                       </div>
                       <div className="text-gray-200 whitespace-pre-wrap">
                         {msg.content}
                       </div>
+                      
+                      {/* Drive Context Display */}
+                      {msg.driveContext && msg.driveContext.length > 0 && (
+                        <div className="mt-3 p-3 bg-gray-800 rounded-lg border border-gray-700">
+                          <div className="text-xs text-gray-400 mb-2 flex items-center space-x-1">
+                            <FileText className="w-3 h-3" />
+                            <span>Referenced Documents:</span>
+                          </div>
+                          <div className="space-y-2">
+                            {msg.driveContext.map((doc, docIdx) => (
+                              <div key={docIdx} className="flex items-center justify-between text-sm">
+                                <span className="text-blue-400 truncate">
+                                  {doc.fileName}
+                                </span>
+                                <span className="text-xs text-green-400">
+                                  {(doc.similarity * 100).toFixed(1)}%
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       {msg.images && msg.images.length > 0 && (
                         <div className="flex gap-2 mt-2">
                           {msg.images.map((image, imgIdx) => (
@@ -388,7 +474,9 @@ export default function MainPage() {
                       </div>
                       <div className="flex items-center space-x-2">
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        <span className="text-gray-400">Thinking...</span>
+                        <span className="text-gray-400">
+                          {driveSearchEnabled && driveConnection.isConnected ? 'Searching documents and thinking...' : 'Thinking...'}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -406,7 +494,7 @@ export default function MainPage() {
                 <textarea
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
-                  placeholder="Type your message and press Enter to send..."
+                  placeholder={`Type your message${driveConnection.isConnected && driveSearchEnabled ? ' (will search your Drive)' : ''} and press Enter to send...`}
                   disabled={isLoading}
                   rows={1}
                   className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 resize-none"

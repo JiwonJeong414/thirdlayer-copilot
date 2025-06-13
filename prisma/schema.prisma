@@ -1,3 +1,4 @@
+// prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
   output   = "../src/generated/prisma"
@@ -10,43 +11,84 @@ datasource db {
 
 model User {
   id          String   @id @default(cuid())
-  uid         String   @unique // Firebase UID
-  email       String   @unique
+  uid         String   @unique
+  email       String
   displayName String?
   photoURL    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
+
   // Relations
-  chats       Chat[]
-  
+  chats               Chat[]
+  driveConnection     DriveConnection?
+  documentEmbeddings  DocumentEmbedding[]
+
   @@map("users")
 }
 
 model Chat {
   id        String   @id @default(cuid())
   summary   String
-  userId    String   // Reference to User.id (not uid)
+  userId    String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   // Relations
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages  Message[]
-  
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages Message[]
+
   @@map("chats")
 }
 
 model Message {
-  id        String   @id @default(cuid())
-  content   String
-  sender    String
-  images    String[] @default([])
-  timestamp DateTime @default(now())
-  chatId    String
+  id          String   @id @default(cuid())
+  content     String
+  sender      String
+  images      String[] @default([])
+  timestamp   DateTime @default(now())
+  chatId      String
   
+  // Drive context for messages that reference documents
+  driveContext Json? // Store array of {fileId, fileName, similarity}
+
   // Relations
-  chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  
+  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
   @@map("messages")
+}
+
+model DriveConnection {
+  id           String    @id @default(cuid())
+  userId       String    @unique
+  accessToken  String
+  refreshToken String?
+  isConnected  Boolean   @default(true)
+  connectedAt  DateTime  @default(now())
+  lastSyncAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("drive_connections")
+}
+
+model DocumentEmbedding {
+  id         String   @id @default(cuid())
+  fileId     String   // Google Drive file ID
+  fileName   String
+  content    String   @db.Text
+  embedding  Float[]  // Vector embedding
+  chunkIndex Int      // Index of chunk within the document
+  userId     String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Composite unique constraint to prevent duplicate chunks
+  @@unique([fileId, chunkIndex], name: "fileId_chunkIndex")
+  @@map("document_embeddings")
 }
