@@ -1,4 +1,5 @@
-// src/components/DriveConnection.tsx - Updated Drive connection component
+
+// src/components/DriveConnection.tsx - Updated with quick sync option
 'use client';
 
 import React, { useState } from 'react';
@@ -10,7 +11,8 @@ import {
   AlertCircle, 
   CheckCircle,
   Loader2,
-  Database
+  Database,
+  Zap
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDrive } from '@/contexts/DriveContext';
@@ -24,14 +26,40 @@ export const DriveConnectionPanel = () => {
     syncDrive 
   } = useDrive();
   const [showDetails, setShowDetails] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
+  const [isQuickSyncing, setIsQuickSyncing] = useState(false);
 
-  const handleSync = async () => {
+  const handleQuickSync = async (limit: number = 10) => {
+    setIsQuickSyncing(true);
     try {
-      await syncDrive();
+      console.log(`Starting quick sync with limit: ${limit}`);
+      
+      const response = await fetch(`/api/drive/sync?limit=${limit}`, {
+        method: 'POST',
+      });
+      
+      if (!response.ok) {
+        throw new Error('Quick sync failed');
+      }
+      
+      const result = await response.json();
+      console.log('Quick sync result:', result);
+      
+      // Refresh the indexed files list
+      window.location.reload(); // Simple refresh for now
+      
+      alert(`Quick sync completed! 
+      
+Processed: ${result.processedCount} files
+Embeddings created: ${result.embeddingCount}
+Skipped: ${result.skippedCount}
+
+${result.note}`);
+      
     } catch (error) {
-      console.error('Sync failed:', error);
-      alert('Sync failed. Please try again.');
+      console.error('Quick sync failed:', error);
+      alert(`Quick sync failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsQuickSyncing(false);
     }
   };
 
@@ -41,50 +69,18 @@ export const DriveConnectionPanel = () => {
       return;
     }
 
-    setIsConnecting(true);
     try {
-      console.log('Starting Drive connection process...');
-      
-      // Get the Drive-specific OAuth URL
       const response = await fetch('/api/drive/auth-url');
-      
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to get auth URL');
       }
       
       const { url } = await response.json();
-      console.log('Got Drive OAuth URL, redirecting...');
-      
-      // Redirect to Google's OAuth page
       window.location.href = url;
     } catch (error) {
       console.error('Error connecting to Drive:', error);
       alert(`Failed to connect to Drive: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setIsConnecting(false);
-    }
-  };
-
-  const handleDisconnect = async () => {
-    if (!confirm('Are you sure you want to disconnect Google Drive? This will remove all indexed documents.')) {
-      return;
-    }
-
-    try {
-      const response = await fetch('/api/drive/disconnect', {
-        method: 'POST',
-      });
-
-      if (response.ok) {
-        // Refresh the page to update the connection status
-        window.location.reload();
-      } else {
-        throw new Error('Failed to disconnect');
-      }
-    } catch (error) {
-      console.error('Error disconnecting Drive:', error);
-      alert('Failed to disconnect Drive. Please try again.');
     }
   };
 
@@ -109,80 +105,71 @@ export const DriveConnectionPanel = () => {
         <div className="flex items-center space-x-2">
           {driveConnection.isConnected ? (
             <>
+              {/* Quick Sync Button */}
               <button
-                onClick={handleSync}
-                disabled={isSync}
-                className="flex items-center space-x-1 px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed text-white rounded text-sm transition-colors"
+                onClick={() => handleQuickSync(10)}
+                disabled={isQuickSyncing}
+                className="flex items-center space-x-1 px-3 py-1 bg-green-600 hover:bg-green-700 disabled:bg-green-800 disabled:cursor-not-allowed text-white rounded text-sm transition-colors"
+                title="Quick sync - process 10 recent files"
               >
-                {isSync ? (
+                {isQuickSyncing ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
-                  <RefreshCw className="w-4 h-4" />
+                  <Zap className="w-4 h-4" />
                 )}
-                <span>{isSync ? 'Syncing...' : 'Sync'}</span>
+                <span>{isQuickSyncing ? 'Quick Sync...' : 'Quick Sync'}</span>
               </button>
-              <button
-                onClick={handleDisconnect}
-                className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm transition-colors"
-              >
-                Disconnect
-              </button>
+              
+              {/* More Options Dropdown */}
+              <div className="relative group">
+                <button className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm transition-colors">
+                  ⋯
+                </button>
+                <div className="absolute right-0 top-full mt-1 bg-gray-700 rounded shadow-lg z-10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
+                  <button
+                    onClick={() => handleQuickSync(25)}
+                    disabled={isQuickSyncing}
+                    className="block w-full px-3 py-2 text-sm text-white hover:bg-gray-600 whitespace-nowrap"
+                  >
+                    Sync 25 files
+                  </button>
+                  <button
+                    onClick={() => handleQuickSync(50)}
+                    disabled={isQuickSyncing}
+                    className="block w-full px-3 py-2 text-sm text-white hover:bg-gray-600 whitespace-nowrap"
+                  >
+                    Sync 50 files
+                  </button>
+                </div>
+              </div>
             </>
           ) : (
             <button
               onClick={handleConnect}
-              disabled={isConnecting}
-              className="flex items-center space-x-1 px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed text-white rounded text-sm transition-colors"
+              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm transition-colors"
             >
-              {isConnecting ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Cloud className="w-4 h-4" />
-              )}
-              <span>{isConnecting ? 'Connecting...' : 'Connect Drive'}</span>
+              Connect Drive
             </button>
           )}
         </div>
       </div>
 
-      {/* Connection Info */}
-      {driveConnection.isConnected && (
-        <div className="text-xs text-gray-400 mb-4">
-          Connected on {new Date(driveConnection.connectedAt || '').toLocaleDateString()}
-          {driveConnection.lastSyncAt && (
-            <span> • Last sync: {new Date(driveConnection.lastSyncAt).toLocaleDateString()}</span>
-          )}
-        </div>
-      )}
-
-      {/* Sync Progress */}
-      {isSync && syncProgress && (
-        <div className="mb-4 p-3 bg-gray-700 rounded">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-gray-300">Syncing your documents...</span>
-            <span className="text-xs text-gray-400">
-              {syncProgress.processedCount}/{syncProgress.totalFiles}
-            </span>
-          </div>
-          <div className="w-full bg-gray-600 rounded-full h-2">
-            <div
-              className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-              style={{
-                width: `${(syncProgress.processedCount / syncProgress.totalFiles) * 100}%`
-              }}
-            />
-          </div>
-          {syncProgress.errorCount > 0 && (
-            <div className="flex items-center space-x-1 mt-2">
-              <AlertCircle className="w-4 h-4 text-yellow-400" />
-              <span className="text-xs text-yellow-400">
-                {syncProgress.errorCount} files couldn't be processed
-              </span>
+      {/* Quick Sync Info */}
+      {driveConnection.isConnected && indexedFiles.length === 0 && (
+        <div className="mb-4 p-3 bg-blue-900 bg-opacity-30 rounded border border-blue-700">
+          <div className="flex items-start space-x-2">
+            <Zap className="w-4 h-4 text-blue-400 mt-0.5" />
+            <div>
+              <p className="text-sm text-blue-300 font-medium">Ready to index your documents!</p>
+              <p className="text-xs text-blue-400 mt-1">
+                Click "Quick Sync" to process 10 recent files for testing. This will take ~2-3 minutes.
+              </p>
             </div>
-          )}
+          </div>
         </div>
       )}
 
+      {/* Rest of your existing component code... */}
       {/* Drive Statistics */}
       {driveConnection.isConnected && (
         <div className="flex items-center justify-between">
@@ -209,7 +196,7 @@ export const DriveConnectionPanel = () => {
           <div className="text-xs text-gray-400 mb-2">INDEXED DOCUMENTS</div>
           <div className="max-h-32 overflow-y-auto space-y-1">
             {indexedFiles.length === 0 ? (
-              <p className="text-sm text-gray-500">No documents indexed yet. Click "Sync" to start.</p>
+              <p className="text-sm text-gray-500">No documents indexed yet. Click "Quick Sync" to start.</p>
             ) : (
               indexedFiles.map((file) => (
                 <div key={file.fileId} className="flex items-center space-x-2 p-2 bg-gray-700 rounded">
