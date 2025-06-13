@@ -83,6 +83,7 @@ model DocumentEmbedding {
   embedding  Float[]  // Vector embedding
   chunkIndex Int      // Index of chunk within the document
   userId     String
+  metadata   Json?    // Store chunk metadata like wordCount, docType, etc.
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

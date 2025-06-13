@@ -17,29 +17,33 @@ import {
   RefreshCw,
   CheckCircle,
   Loader2,
-  X
+  X,
+  Zap
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useChat } from '@/contexts/ChatContext';
 import { useDrive } from '@/contexts/DriveContext';
 
+interface SyncResults {
+  success: boolean;
+  error?: string;
+  embeddingCount?: number;
+  newFilesAvailable?: number;
+  skippedCount?: number;
+  totalIndexedFiles?: number;
+  strategy?: 'force_reindex' | 'new_files';
+}
+
 export default function Sidebar() {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showSyncModal, setShowSyncModal] = useState(false);
-  const [selectedSyncSize, setSelectedSyncSize] = useState(25);
+  const [selectedSyncSize, setSelectedSyncSize] = useState(10);
+  const [syncMode, setSyncMode] = useState('new'); // 'new' or 'force'
   const [isSyncing, setIsSyncing] = useState(false);
-  const [syncProgress, setSyncProgress] = useState({
-    totalFiles: 0,
-    processedFiles: 0,
-    currentFile: '',
-    embeddingsCreated: 0,
-    skipped: 0,
-    errors: 0,
-    isComplete: false
-  });
+  const [syncResults, setSyncResults] = useState<SyncResults | null>(null);
 
   const { user, signOut, driveConnection } = useAuth();
-  const { indexedFiles } = useDrive();
+  const { indexedFiles, refreshIndexedFiles } = useDrive();
   const {
     chats,
     currentChat,
@@ -75,91 +79,46 @@ export default function Sidebar() {
     }
   };
 
-  const handleSync = async (limit: number) => {
+
+  const handleSmartSync = async () => {
     setIsSyncing(true);
-    setSyncProgress({
-      totalFiles: limit,
-      processedFiles: 0,
-      currentFile: 'Initializing sync...',
-      embeddingsCreated: 0,
-      skipped: 0,
-      errors: 0,
-      isComplete: false
-    });
-
-    // Simulate realistic progress during the actual API call
-    const progressInterval = setInterval(() => {
-      setSyncProgress(prev => {
-        if (prev.isComplete || prev.processedFiles >= prev.totalFiles) return prev;
-        
-        const files = [
-          'Project Documentation.docx',
-          'Meeting Notes - Q4 Planning.txt', 
-          'Technical Specifications.md',
-          'Budget Analysis 2024.xlsx',
-          'User Research Findings.pdf',
-          'API Integration Guide.docx',
-          'Marketing Strategy.pptx',
-          'Product Roadmap.md',
-          'Team Communication Guidelines.txt',
-          'Client Feedback Summary.docx'
-        ];
-        
-        const increment = Math.random() > 0.6 ? 1 : 0;
-        const newProcessed = Math.min(prev.processedFiles + increment, prev.totalFiles - 1); // Leave room for API completion
-        const fileName = files[newProcessed % files.length] || `Document ${newProcessed + 1}.txt`;
-        
-        return {
-          ...prev,
-          processedFiles: newProcessed,
-          currentFile: `Processing: ${fileName}`,
-          embeddingsCreated: prev.embeddingsCreated + (Math.random() > 0.3 ? increment : 0),
-          skipped: prev.skipped + (Math.random() > 0.9 ? increment : 0)
-        };
-      });
-    }, 1200 + Math.random() * 800);
-
+    setSyncResults(null);
+  
     try {
-      console.log(`🚀 Starting sync for ${limit} files`);
+      console.log(`Starting smart sync for ${selectedSyncSize} files (mode: ${syncMode})`);
       
-      const response = await fetch(`/api/drive/sync?limit=${limit}`, {
+      const params = new URLSearchParams({
+        limit: selectedSyncSize.toString(),
+        ...(syncMode === 'force' && { force: 'true' })
+      });
+      
+      const response = await fetch(`/api/drive/sync?${params}`, {
         method: 'POST',
       });
       
-      clearInterval(progressInterval);
-      
       if (!response.ok) {
-        throw new Error('Sync failed');
+        throw new Error('Smart sync failed');
       }
       
       const result = await response.json();
-      console.log('✅ Sync completed:', result);
+      console.log('Smart sync completed:', result);
       
-      // Update with final real results
-      setSyncProgress({
-        totalFiles: result.totalFilesInDrive || limit,
-        processedFiles: result.processedCount || limit,
-        embeddingsCreated: result.embeddingCount || 0,
-        skipped: result.skippedCount || 0,
-        errors: result.errorCount || 0,
-        isComplete: true,
-        currentFile: `Completed! Indexed ${result.embeddingCount || 0} documents`
-      });
+      setSyncResults(result);
       
-      // Refresh after showing results
+      // FIXED: Refresh the indexed files count immediately
+      await refreshIndexedFiles();
+      
+      // Still auto-refresh page after a delay for full UI update
       setTimeout(() => {
         window.location.reload();
-      }, 3000);
+      }, 2000); // Reduced from 3000ms
       
     } catch (error) {
-      clearInterval(progressInterval);
-      console.error('❌ Sync failed:', error);
-      setSyncProgress(prev => ({
-        ...prev,
-        currentFile: 'Sync failed - please try again',
-        errors: prev.errors + 1,
-        isComplete: true
-      }));
+      console.error('Smart sync failed:', error);
+      setSyncResults({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
     } finally {
       setIsSyncing(false);
     }
@@ -233,7 +192,7 @@ export default function Sidebar() {
           </div>
         </div>
 
-        {/* Google Drive Panel - Always Open */}
+        {/* Google Drive Panel */}
         <div className="bg-gray-700 rounded-lg p-3 mb-4">
           {/* Drive Header */}
           <div className="flex items-center justify-between mb-3">
@@ -256,9 +215,9 @@ export default function Sidebar() {
                   {isSyncing ? (
                     <Loader2 className="w-3 h-3 animate-spin" />
                   ) : (
-                    <RefreshCw className="w-3 h-3" />
+                    <Zap className="w-3 h-3" />
                   )}
-                  <span>{isSyncing ? 'Syncing' : 'Sync'}</span>
+                  <span>{isSyncing ? 'Syncing' : 'Smart Sync'}</span>
                 </button>
               ) : (
                 <button
@@ -458,14 +417,14 @@ export default function Sidebar() {
         />
       )}
 
-      {/* Sync Modal */}
+      {/* Smart Sync Modal */}
       {showSyncModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-gray-800 rounded-lg w-full max-w-md border border-gray-700">
-            {!isSyncing ? (
+            {!isSyncing && !syncResults ? (
               <div className="p-6">
                 <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-lg font-medium text-white">Sync Google Drive</h3>
+                  <h3 className="text-lg font-medium text-white">Smart Sync Drive</h3>
                   <button
                     onClick={() => setShowSyncModal(false)}
                     className="text-gray-400 hover:text-white p-1 rounded hover:bg-gray-700 transition-colors"
@@ -475,114 +434,149 @@ export default function Sidebar() {
                 </div>
 
                 <div className="space-y-4">
+                  {/* Target Documents */}
                   <div>
-                    <label className="text-sm text-gray-400 mb-2 block">Number of files to sync:</label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {[10, 25, 50].map(size => (
+                    <label className="text-sm text-gray-400 mb-2 block">
+                      New documents to index:
+                    </label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {[5, 10, 25, 50].map(size => (
                         <button
                           key={size}
                           onClick={() => setSelectedSyncSize(size)}
-                          className={`p-3 rounded border text-center transition-colors ${
+                          className={`p-2 rounded text-center transition-colors ${
                             selectedSyncSize === size
-                              ? 'border-blue-500 bg-blue-500/20 text-blue-300'
-                              : 'border-gray-600 bg-gray-700 text-gray-300 hover:border-gray-500'
+                              ? 'border-blue-500 bg-blue-500/20 text-blue-300 border'
+                              : 'border-gray-600 bg-gray-700 text-gray-300 hover:border-gray-500 border'
                           }`}
                         >
                           <div className="text-lg font-medium">{size}</div>
-                          <div className="text-xs text-gray-400">
-                            {size === 10 ? '~2 min' : size === 25 ? '~5 min' : '~10 min'}
-                          </div>
+                          <div className="text-xs text-gray-400">docs</div>
                         </button>
                       ))}
                     </div>
                   </div>
 
+                  {/* Sync Mode */}
+                  <div>
+                    <label className="text-sm text-gray-400 mb-2 block">Sync mode:</label>
+                    <div className="space-y-2">
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          value="new"
+                          checked={syncMode === 'new'}
+                          onChange={(e) => setSyncMode(e.target.value)}
+                          className="text-blue-500"
+                        />
+                        <span className="text-sm text-gray-300">
+                          New files only (recommended)
+                        </span>
+                      </label>
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          value="force"
+                          checked={syncMode === 'force'}
+                          onChange={(e) => setSyncMode(e.target.value)}
+                          className="text-blue-500"
+                        />
+                        <span className="text-sm text-gray-300">
+                          Force reindex existing files
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+
                   <div className="bg-gray-700 rounded p-3">
                     <p className="text-sm text-gray-300">
-                      This will analyze your documents and create embeddings for AI-powered search.
+                      Smart sync will automatically find and index {selectedSyncSize} {syncMode === 'new' ? 'new' : ''} documents from your Drive.
                     </p>
                   </div>
 
                   <button
-                    onClick={() => handleSync(selectedSyncSize)}
+                    onClick={handleSmartSync}
                     className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded font-medium transition-colors"
                   >
-                    Start Sync ({selectedSyncSize} files)
+                    Start Smart Sync ({selectedSyncSize} docs)
                   </button>
+                </div>
+              </div>
+            ) : isSyncing ? (
+              <div className="p-6">
+                <div className="text-center mb-6">
+                  <Loader2 className="w-8 h-8 text-blue-400 animate-spin mx-auto mb-3" />
+                  <h3 className="text-lg font-medium text-white">Smart Syncing</h3>
+                  <p className="text-sm text-gray-400">Finding and indexing {syncMode === 'new' ? 'new' : ''} documents...</p>
+                </div>
+
+                <div className="bg-gray-700 rounded p-3">
+                  <p className="text-sm text-gray-300 text-center">
+                    Please wait while we process your documents.
+                  </p>
                 </div>
               </div>
             ) : (
               <div className="p-6">
                 <div className="text-center mb-6">
-                  <Loader2 className="w-8 h-8 text-blue-400 animate-spin mx-auto mb-3" />
-                  <h3 className="text-lg font-medium text-white">Syncing Documents</h3>
-                  <p className="text-sm text-gray-400">Processing your files...</p>
+                  {syncResults?.success ? (
+                    <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-3" />
+                  ) : (
+                    <X className="w-8 h-8 text-red-400 mx-auto mb-3" />
+                  )}
+                  <h3 className="text-lg font-medium text-white">
+                    {syncResults?.success ? 'Sync Completed' : 'Sync Failed'}
+                  </h3>
                 </div>
 
-                <div className="mb-4">
-                  <div className="flex justify-between text-sm text-gray-400 mb-1">
-                    <span>Progress</span>
-                    <span>{syncProgress.processedFiles} / {syncProgress.totalFiles}</span>
-                  </div>
-                  <div className="w-full bg-gray-700 rounded-full h-2">
-                    <div 
-                      className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${Math.min((syncProgress.processedFiles / syncProgress.totalFiles) * 100, 100)}%` }}
-                    ></div>
-                  </div>
-                  <div className="text-center mt-1">
-                    <span className="text-lg font-medium text-white">
-                      {Math.round(Math.min((syncProgress.processedFiles / syncProgress.totalFiles) * 100, 100))}%
-                    </span>
-                  </div>
-                </div>
-
-                <div className="bg-gray-700 rounded p-3 mb-4">
-                  <p className="text-sm text-gray-400">Status:</p>
-                  <p className="text-sm text-white break-all">{syncProgress.currentFile}</p>
-                </div>
-
-                <div className="grid grid-cols-3 gap-3 text-center">
-                  <div className="bg-gray-700 rounded p-2">
-                    <div className="text-lg font-medium text-green-400">{syncProgress.embeddingsCreated}</div>
-                    <div className="text-xs text-gray-400">Indexed</div>
-                  </div>
-                  <div className="bg-gray-700 rounded p-2">
-                    <div className="text-lg font-medium text-yellow-400">{syncProgress.skipped}</div>
-                    <div className="text-xs text-gray-400">Skipped</div>
-                  </div>
-                  <div className="bg-gray-700 rounded p-2">
-                    <div className="text-lg font-medium text-red-400">{syncProgress.errors}</div>
-                    <div className="text-xs text-gray-400">Errors</div>
-                  </div>
-                </div>
-
-                {syncProgress.isComplete && (
-                  <div className="mt-4">
-                    <div className="flex items-center justify-center space-x-2 text-green-400 mb-3">
-                      <CheckCircle className="w-5 h-5" />
-                      <span className="font-medium">Sync completed!</span>
+                {syncResults?.success ? (
+                  <div className="space-y-3">
+                    <div className="bg-gray-700 rounded p-3">
+                      <div className="grid grid-cols-2 gap-3 text-center text-sm">
+                        <div>
+                          <div className="text-lg font-medium text-green-400">{syncResults.embeddingCount}</div>
+                          <div className="text-gray-400">Indexed</div>
+                        </div>
+                        <div>
+                          <div className="text-lg font-medium text-blue-400">{syncResults.newFilesAvailable}</div>
+                          <div className="text-gray-400">Available</div>
+                        </div>
+                        <div>
+                          <div className="text-lg font-medium text-yellow-400">{syncResults.skippedCount}</div>
+                          <div className="text-gray-400">Skipped</div>
+                        </div>
+                        <div>
+                          <div className="text-lg font-medium text-purple-400">{syncResults.totalIndexedFiles}</div>
+                          <div className="text-gray-400">Total</div>
+                        </div>
+                      </div>
                     </div>
-                    <button
-                      onClick={() => {
-                        setShowSyncModal(false);
-                        // Reset for next time
-                        setSyncProgress({
-                          totalFiles: 0,
-                          processedFiles: 0,
-                          currentFile: '',
-                          embeddingsCreated: 0,
-                          skipped: 0,
-                          errors: 0,
-                          isComplete: false
-                        });
-                      }}
-                      className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded font-medium transition-colors"
-                    >
-                      Done
-                    </button>
+                    
+                    <div className="text-xs text-gray-400 text-center">
+                      Strategy: {syncResults.strategy === 'force_reindex' ? 'Force reindex' : 'New files only'}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-red-900/30 border border-red-700 rounded p-3">
+                    <p className="text-sm text-red-300">
+                      {syncResults?.error || 'Unknown error occurred'}
+                    </p>
                   </div>
                 )}
+
+                <button
+                  onClick={() => {
+                    setShowSyncModal(false);
+                    setSyncResults(null);
+                  }}
+                  className={`w-full py-2 rounded font-medium transition-colors mt-4 ${
+                    syncResults?.success 
+                      ? 'bg-green-600 hover:bg-green-700 text-white'
+                      : 'bg-gray-600 hover:bg-gray-700 text-white'
+                  }`}
+                >
+                  {syncResults?.success ? 'Done' : 'Close'}
+                </button>
               </div>
             )}
           </div>
