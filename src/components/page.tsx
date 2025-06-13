@@ -5,45 +5,40 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Search,
   Send,
-  FileText,
-  Folder,
   MoreHorizontal,
   Settings,
   User,
   HelpCircle,
   MessageSquare,
-  LogOut,
   Plus,
   Trash2,
   Edit3,
   ChevronDown,
   Database,
-  Cpu,
   Activity,
 } from 'lucide-react';
 import { useChat } from '@/contexts/ChatContext';
-import { Message } from '@/types/chat';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function MainPage() {
   const [message, setMessage] = useState('');
-  const [isConnected, setIsConnected] = useState(true); // Set to true for Ollama chat
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { user } = useAuth();
   
   const {
+    chats,
+    currentChat,
     messages,
     isLoading,
     selectedModel,
     availableModels,
     setSelectedModel,
+    createNewChat,
+    loadChat,
     sendMessage,
-    clearMessages,
-    fetchModels,
+    deleteChat,
+    clearCurrentChat,
   } = useChat();
-
-  // Fetch available models on component mount
-  useEffect(() => {
-    fetchModels();
-  }, []);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -58,8 +53,19 @@ export default function MainPage() {
     }
   };
 
-  const connectGoogleDrive = () => {
-    setIsConnected(true);
+  const handleNewChat = async () => {
+    clearCurrentChat();
+  };
+
+  const handleChatClick = async (chatId: string) => {
+    await loadChat(chatId);
+  };
+
+  const handleDeleteChat = async (chatId: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent chat selection
+    if (confirm('Are you sure you want to delete this chat?')) {
+      await deleteChat(chatId);
+    }
   };
 
   const formatTimestamp = (timestamp: string) => {
@@ -87,8 +93,9 @@ export default function MainPage() {
             </div>
             <div className="flex items-center space-x-2">
               <button 
-                onClick={clearMessages}
+                onClick={handleNewChat}
                 className="p-1 hover:bg-gray-700 rounded text-gray-400 hover:text-white transition-colors"
+                title="New Chat"
               >
                 <Plus className="w-4 h-4" />
               </button>
@@ -129,22 +136,57 @@ export default function MainPage() {
           </div>
         </div>
 
-        {/* Chat Stats */}
-        <div className="flex-1 p-4">
-          <div className="text-center text-gray-400">
-            <p className="text-sm mb-2">Messages: {messages.length}</p>
-            <p className="text-sm">Model: {selectedModel}</p>
-          </div>
+        {/* Chat History */}
+        <div className="flex-1 overflow-y-auto p-2">
+          <div className="text-xs text-gray-400 mb-2 px-2">CHAT HISTORY</div>
+          {!chats || chats.length === 0 ? (
+            <div className="text-center text-gray-500 py-8">
+              <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">No chats yet</p>
+            </div>
+          ) : (
+            chats.map((chat) => (
+              <div
+                key={chat.id}
+                onClick={() => handleChatClick(chat.id)}
+                className={`p-3 rounded-lg mb-1 cursor-pointer transition-colors group ${
+                  currentChat?.id === chat.id
+                    ? 'bg-gray-700 border-l-2 border-blue-500'
+                    : 'hover:bg-gray-700 hover:bg-opacity-50'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-white truncate">
+                      {chat.summary}
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      {new Date(chat.updatedAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button 
+                      onClick={(e) => handleDeleteChat(chat.id, e)}
+                      className="p-1 hover:bg-gray-600 rounded text-gray-400 hover:text-white"
+                      title="Delete chat"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
         </div>
 
         {/* Bottom Section */}
         <div className="p-4 border-t border-gray-700">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-gray-400">SYSTEM STATUS:</span>
+            <span className="text-xs text-gray-400">STATUS:</span>
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-1">
                 <Database className="w-3 h-3 text-gray-400" />
-                <span className="text-xs text-gray-400">Connected</span>
+                <span className="text-xs text-gray-400">DB Connected</span>
               </div>
               <div className="flex items-center space-x-1">
                 <Activity className="w-3 h-3 text-green-400" />
@@ -158,7 +200,9 @@ export default function MainPage() {
               <div className="w-6 h-6 bg-gray-600 rounded-full flex items-center justify-center">
                 <User className="w-3 h-3 text-gray-300" />
               </div>
-              <span className="text-sm text-gray-300">User</span>
+              <span className="text-sm text-gray-300">
+                {user?.displayName || user?.email || 'User'}
+              </span>
             </div>
             <Settings className="w-4 h-4 text-gray-400 cursor-pointer hover:text-white transition-colors" />
           </div>
@@ -172,7 +216,7 @@ export default function MainPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <span className="text-lg font-medium text-white">
-                Ollama Chat
+                {currentChat ? currentChat.summary : 'Ollama Chat'}
               </span>
               <div className="flex items-center space-x-2 text-sm text-gray-400">
                 <span>Model:</span>
@@ -182,14 +226,11 @@ export default function MainPage() {
               </div>
             </div>
             <div className="flex items-center space-x-3">
-              <button 
-                onClick={fetchModels}
-                className="p-2 hover:bg-gray-700 rounded text-gray-400 hover:text-white transition-colors"
-              >
-                <Search className="w-4 h-4" />
-              </button>
               <button className="p-2 hover:bg-gray-700 rounded text-gray-400 hover:text-white transition-colors">
                 <HelpCircle className="w-4 h-4" />
+              </button>
+              <button className="p-2 hover:bg-gray-700 rounded text-gray-400 hover:text-white transition-colors">
+                <MoreHorizontal className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -228,11 +269,11 @@ export default function MainPage() {
                 {messages.map((msg, idx) => (
                   <div key={idx} className="flex space-x-4">
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                      msg.role === 'user' 
+                      msg.sender === 'user' 
                         ? 'bg-blue-600' 
                         : 'bg-green-600'
                     }`}>
-                      {msg.role === 'user' ? (
+                      {msg.sender === 'user' ? (
                         <User className="w-4 h-4 text-white" />
                       ) : (
                         <MessageSquare className="w-4 h-4 text-white" />
@@ -241,17 +282,27 @@ export default function MainPage() {
                     <div className="flex-1">
                       <div className="flex items-center space-x-2 mb-1">
                         <span className="text-sm font-medium text-white">
-                          {msg.role === 'user' ? 'You' : selectedModel}
+                          {msg.sender === 'user' ? 'You' : msg.sender}
                         </span>
-                        {msg.timestamp && (
-                          <span className="text-xs text-gray-400">
-                            {formatTimestamp(msg.timestamp)}
-                          </span>
-                        )}
+                        <span className="text-xs text-gray-400">
+                          {formatTimestamp(msg.timestamp)}
+                        </span>
                       </div>
                       <div className="text-gray-200 whitespace-pre-wrap">
                         {msg.content}
                       </div>
+                      {msg.images && msg.images.length > 0 && (
+                        <div className="flex gap-2 mt-2">
+                          {msg.images.map((image, imgIdx) => (
+                            <img
+                              key={imgIdx}
+                              src={image}
+                              alt="Attached image"
+                              className="max-w-xs rounded-lg"
+                            />
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
