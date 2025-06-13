@@ -1,3 +1,4 @@
+
 // src/lib/vectorService.ts - Enhanced with better error handling
 import { PrismaClient } from '@/generated/prisma';
 

@@ -61,7 +61,7 @@ export class GoogleDriveService {
         pageSize,
         pageToken,
         fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, size, parents, webViewLink)',
-        q: "trashed=false and (mimeType='application/pdf' or mimeType='application/vnd.google-apps.document' or mimeType='text/plain' or mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document')",
+        q: "trashed=false",
       });
 
       if (!response.data) {
