@@ -1,3 +1,4 @@
+// src/app/api/chats/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@/generated/prisma';
 
@@ -7,12 +8,13 @@ const prisma = new PrismaClient();
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const userUid = searchParams.get('uid');
+    const userUid = searchParams.get('userUid');
 
     if (!userUid) {
       return NextResponse.json({ error: 'User UID required' }, { status: 400 });
     }
 
+    // Find user by UID instead of email
     const user = await prisma.user.findUnique({
       where: { uid: userUid },
     });
@@ -54,17 +56,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'User UID and summary required' }, { status: 400 });
     }
 
-    let user = await prisma.user.findUnique({
+    // Find user by UID
+    const user = await prisma.user.findUnique({
       where: { uid: userUid },
     });
 
     if (!user) {
-      user = await prisma.user.create({
-        data: {
-          uid: userUid,
-          email: `${userUid}@temp.com`,
-        },
-      });
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
     const chat = await prisma.chat.create({

@@ -1,4 +1,4 @@
-// src/contexts/ChatContext.tsx - Updated to use /api/chats
+// src/contexts/ChatContext.tsx
 'use client';
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
@@ -80,7 +80,7 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     if (!user) return;
     
     try {
-      const response = await fetch(`/api/chats?uid=${user.uid}`);
+      const response = await fetch(`/api/chats?userUid=${user.uid}`);
       const data = await response.json();
       setChats(data.chats || []);
     } catch (error) {
@@ -195,8 +195,6 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
         stream: true,
       };
 
-      console.log('Sending Ollama request via /api/chats PUT:', requestBody);
-
       // Use PUT method on /api/chats for Ollama streaming
       const response = await fetch('/api/chats', {
         method: 'PUT',
@@ -206,16 +204,12 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
         body: JSON.stringify(requestBody),
       });
 
-      console.log('Response status:', response.status);
-
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        console.error('API Error:', errorData);
         throw new Error(errorData.error || `HTTP ${response.status}`);
       }
 
       if (!response.body) {
-        console.error('No response body');
         throw new Error('No response body received');
       }
 
@@ -234,8 +228,6 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
       let buffer = '';
       let done = false;
       let fullContent = '';
-
-      console.log('Starting to read stream...');
 
       while (!done) {
         try {
@@ -264,7 +256,6 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
                   }
 
                   if (parsed.done) {
-                    console.log('Stream completed');
                     done = true;
                     break;
                   }

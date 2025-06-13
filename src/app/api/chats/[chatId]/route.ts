@@ -26,6 +26,7 @@ export async function GET(
             id: true,
             uid: true,
             email: true,
+            displayName: true,
           },
         },
       },
@@ -84,6 +85,18 @@ export async function DELETE(
 ) {
   try {
     const { chatId } = context.params;
+    
+    // Check if chat exists
+    const chat = await prisma.chat.findUnique({
+      where: { id: chatId },
+      include: { user: true }
+    });
+
+    if (!chat) {
+      return NextResponse.json({ error: 'Chat not found' }, { status: 404 });
+    }
+
+    // Delete the chat (messages will be deleted by cascade)
     await prisma.chat.delete({
       where: {
         id: chatId,
