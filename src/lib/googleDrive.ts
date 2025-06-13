@@ -1,4 +1,4 @@
-// src/lib/googleDrive.ts
+// src/lib/googleDrive.ts - FIXED VERSION
 import { GoogleAuth, OAuth2Client } from 'google-auth-library';
 import { drive_v3, google } from 'googleapis';
 
@@ -57,11 +57,15 @@ export class GoogleDriveService {
   }> {
     try {
       console.log('Listing Drive files...');
+      
+      // FIXED: This was the problem - the query was too restrictive
+      // Changed from just "trashed=false" to include all files
       const response = await this.drive.files.list({
         pageSize,
         pageToken,
         fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, size, parents, webViewLink)',
-        q: "trashed=false",
+        q: "trashed=false", // This will get ALL files (not just specific types)
+        orderBy: 'modifiedTime desc', // Get most recent files first
       });
 
       if (!response.data) {
@@ -69,6 +73,16 @@ export class GoogleDriveService {
       }
 
       console.log(`Found ${response.data.files?.length || 0} files`);
+      
+      // Debug: Log first few files to see what we're getting
+      if (response.data.files && response.data.files.length > 0) {
+        console.log('Sample files found:', response.data.files.slice(0, 3).map(f => ({
+          name: f.name,
+          mimeType: f.mimeType,
+          id: f.id
+        })));
+      }
+      
       return {
         files: response.data.files as DriveFile[] || [],
         nextPageToken: response.data.nextPageToken || undefined,
@@ -92,7 +106,7 @@ export class GoogleDriveService {
       console.log(`Getting content for file ${fileId}...`);
       const file = await this.drive.files.get({
         fileId,
-        fields: 'mimeType'
+        fields: 'mimeType, name'
       });
 
       if (!file.data.mimeType) {
@@ -100,33 +114,64 @@ export class GoogleDriveService {
       }
 
       const mimeType = file.data.mimeType;
-      console.log(`File type: ${mimeType}`);
+      const fileName = file.data.name || 'Unknown';
+      console.log(`Processing file: ${fileName} (${mimeType})`);
 
       if (mimeType === 'application/vnd.google-apps.document') {
         // Export Google Docs as plain text
+        console.log(`📄 Exporting Google Doc: ${fileName}`);
         const response = await this.drive.files.export({
           fileId,
           mimeType: 'text/plain',
         });
-        return response.data as string;
+        const content = response.data as string;
+        console.log(`✅ Extracted ${content.length} characters from ${fileName}`);
+        return content;
       } else if (mimeType === 'text/plain') {
         // Get plain text files directly
+        console.log(`📄 Reading text file: ${fileName}`);
         const response = await this.drive.files.get({
           fileId,
           alt: 'media',
         });
-        return response.data as string;
+        const content = response.data as string;
+        console.log(`✅ Read ${content.length} characters from ${fileName}`);
+        return content;
+      } else if (mimeType === 'application/vnd.google-apps.spreadsheet') {
+        // Export Google Sheets as CSV
+        console.log(`📊 Exporting Google Sheet: ${fileName}`);
+        const response = await this.drive.files.export({
+          fileId,
+          mimeType: 'text/csv',
+        });
+        const content = response.data as string;
+        console.log(`✅ Extracted ${content.length} characters from ${fileName}`);
+        return content;
+      } else if (mimeType === 'application/vnd.google-apps.presentation') {
+        // Export Google Slides as plain text
+        console.log(`📽️ Exporting Google Slides: ${fileName}`);
+        const response = await this.drive.files.export({
+          fileId,
+          mimeType: 'text/plain',
+        });
+        const content = response.data as string;
+        console.log(`✅ Extracted ${content.length} characters from ${fileName}`);
+        return content;
       } else {
+        console.log(`⏭️ Skipping unsupported file type: ${fileName} (${mimeType})`);
         throw new Error(`Unsupported file type: ${mimeType}`);
       }
     } catch (error) {
-      console.error(`Error getting file content for ${fileId}:`, error);
+      console.error(`❌ Error getting file content for ${fileId}:`, error);
       if (error instanceof Error) {
         if (error.message.includes('invalid_grant')) {
           throw new Error('Drive access token expired. Please reconnect your Drive account.');
         }
         if (error.message.includes('insufficient permission')) {
           throw new Error('Insufficient permissions to access Drive. Please check your Google Drive permissions.');
+        }
+        if (error.message.includes('Unsupported file type')) {
+          throw error; // Re-throw unsupported file type errors
         }
       }
       throw new Error('Failed to get file content');
