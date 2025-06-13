@@ -1,4 +1,5 @@
-// src/app/api/drive/files/route.ts
+
+// src/app/api/drive/files/route.ts - Updated for session-based auth
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@/generated/prisma';
 import { VectorService } from '@/lib/vectorService';
@@ -7,13 +8,15 @@ const prisma = new PrismaClient();
 
 export async function GET(request: NextRequest) {
   try {
-    const uid = request.headers.get('uid');
-    if (!uid) {
+    const session = request.cookies.get('session');
+    if (!session) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
+    const { userId } = JSON.parse(session.value);
+
     const user = await prisma.user.findUnique({
-      where: { uid },
+      where: { id: userId },
     });
 
     if (!user) {
@@ -27,4 +30,4 @@ export async function GET(request: NextRequest) {
     console.error('Error getting indexed files:', error);
     return NextResponse.json({ error: 'Failed to get indexed files' }, { status: 500 });
   }
-} 
+}

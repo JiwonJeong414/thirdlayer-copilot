@@ -1,4 +1,4 @@
-// src/app/api/models/route.ts
+// src/app/api/models/route.ts - No authentication required for getting available models
 import { NextRequest, NextResponse } from 'next/server';
 
 // List of known embedding models that should be excluded from chat
@@ -15,6 +15,13 @@ const EMBEDDING_MODELS = [
 
 export async function GET(request: NextRequest) {
   try {
+    if (!process.env.OLLAMA_ENDPOINT) {
+      return NextResponse.json(
+        { error: 'Ollama endpoint not configured' }, 
+        { status: 500 }
+      );
+    }
+
     const response = await fetch(`${process.env.OLLAMA_ENDPOINT}/api/tags`);
     
     if (!response.ok) {
@@ -39,6 +46,14 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error fetching models:', error);
+    
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      return NextResponse.json(
+        { error: 'Cannot connect to Ollama. Make sure it\'s running.' }, 
+        { status: 503 }
+      );
+    }
+    
     return NextResponse.json(
       { error: 'Failed to fetch models' }, 
       { status: 500 }

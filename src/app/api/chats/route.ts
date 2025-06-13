@@ -1,4 +1,4 @@
-// src/app/api/chats/route.ts
+// src/app/api/chats/route.ts - Updated for session-based auth
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@/generated/prisma';
 
@@ -7,28 +7,21 @@ const prisma = new PrismaClient();
 // Get all chats for a user
 export async function GET(request: NextRequest) {
   try {
-    // Get user info from middleware headers
-    const uid = request.headers.get('uid');
-    const email = request.headers.get('email');
-
-    if (!uid) {
+    // Get user ID from session cookie (via middleware)
+    const session = request.cookies.get('session');
+    if (!session) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    // Find user by UID
+    const { userId } = JSON.parse(session.value);
+
+    // Find user by ID
     const user = await prisma.user.findUnique({
-      where: { uid },
+      where: { id: userId },
     });
 
     if (!user) {
-      // Create user if they don't exist
-      const newUser = await prisma.user.create({
-        data: {
-          uid,
-          email: email || '',
-        },
-      });
-      return NextResponse.json({ chats: [] });
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
     const chats = await prisma.chat.findMany({
@@ -59,29 +52,26 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { summary, firstMessage } = await request.json();
-    const uid = request.headers.get('uid');
-    const email = request.headers.get('email');
-
-    if (!uid) {
+    
+    // Get user ID from session cookie
+    const session = request.cookies.get('session');
+    if (!session) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
+
+    const { userId } = JSON.parse(session.value);
 
     if (!summary) {
       return NextResponse.json({ error: 'Summary required' }, { status: 400 });
     }
 
-    // Find or create user
-    let user = await prisma.user.findUnique({
-      where: { uid },
+    // Find user
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
     });
 
     if (!user) {
-      user = await prisma.user.create({
-        data: {
-          uid,
-          email: email || '',
-        },
-      });
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
     const chat = await prisma.chat.create({
@@ -111,10 +101,13 @@ export async function POST(request: NextRequest) {
 // Handle Ollama chat streaming
 export async function PUT(request: NextRequest) {
   try {
-    const uid = request.headers.get('uid');
-    if (!uid) {
+    // Get user ID from session cookie
+    const session = request.cookies.get('session');
+    if (!session) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
+
+    const { userId } = JSON.parse(session.value);
 
     const body = await request.json();
     

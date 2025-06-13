@@ -1,4 +1,4 @@
-// src/contexts/DriveContext.tsx
+// src/contexts/DriveContext.tsx - Updated for session-based auth
 'use client';
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
@@ -62,21 +62,11 @@ export const DriveProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [user, driveConnection.isConnected]);
 
-  const getAuthToken = async () => {
-    if (!user) throw new Error('User not authenticated');
-    return await user.getIdToken();
-  };
-
   const fetchIndexedFiles = async () => {
     if (!user || !driveConnection.isConnected) return;
 
     try {
-      const token = await getAuthToken();
-      const response = await fetch('/api/drive/files', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetch('/api/drive/files');
 
       if (response.ok) {
         const data = await response.json();
@@ -94,12 +84,8 @@ export const DriveProvider = ({ children }: { children: ReactNode }) => {
     setSyncProgress({ totalFiles: 0, processedCount: 0, errorCount: 0 });
 
     try {
-      const token = await getAuthToken();
       const response = await fetch('/api/drive/sync', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
       });
 
       if (response.ok) {
@@ -130,12 +116,10 @@ export const DriveProvider = ({ children }: { children: ReactNode }) => {
 
     setIsSearching(true);
     try {
-      const token = await getAuthToken();
       const response = await fetch('/api/drive/search', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({ query, limit }),
       });

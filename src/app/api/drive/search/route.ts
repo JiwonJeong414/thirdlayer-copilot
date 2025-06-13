@@ -1,22 +1,19 @@
-// src/app/api/drive/search/route.ts
+// src/app/api/drive/search/route.ts - Updated for session-based auth
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@/generated/prisma';
 import { VectorService } from '@/lib/vectorService';
-import { auth } from '@/lib/firebase-admin';
 
 const prisma = new PrismaClient();
 
 export async function POST(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
+    // Get user ID from session cookie
+    const session = request.cookies.get('session');
+    if (!session) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    const uid = decodedToken.uid;
-
+    const { userId } = JSON.parse(session.value);
     const { query, limit = 5 } = await request.json();
 
     if (!query) {
@@ -24,7 +21,7 @@ export async function POST(request: NextRequest) {
     }
 
     const user = await prisma.user.findUnique({
-      where: { uid },
+      where: { id: userId },
     });
 
     if (!user) {
@@ -38,4 +35,4 @@ export async function POST(request: NextRequest) {
     console.error('Error searching Drive documents:', error);
     return NextResponse.json({ error: 'Failed to search documents' }, { status: 500 });
   }
-} 
+}

@@ -1,4 +1,4 @@
-// src/contexts/ChatContext.tsx - Updated with proper model handling
+// src/contexts/ChatContext.tsx - Updated with session-based auth
 'use client';
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
@@ -10,7 +10,7 @@ interface User {
   email: string;
   displayName: string;
   photoURL: string;
-  uid: string;  // Add this to match our OAuth implementation
+  uid: string;
 }
 
 interface Message {
@@ -69,7 +69,7 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
   const [currentChat, setCurrentChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('llama3.2:1b'); // Safe default
+  const [selectedModel, setSelectedModel] = useState('llama3.2:1b');
   const [availableModels, setAvailableModels] = useState<string[]>(['llama3.2:1b']);
   const [driveSearchEnabled, setDriveSearchEnabled] = useState(true);
 
@@ -80,47 +80,22 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [user]);
 
-  const getAuthToken = async () => {
-    if (!user) throw new Error('User not authenticated');
-    // Get the session cookie
-    const response = await fetch('/api/auth/session');
-    if (!response.ok) {
-      throw new Error('Failed to get session');
-    }
-    const { accessToken, user: sessionUser } = await response.json();
-    
-    // Update user data if needed
-    if (sessionUser && sessionUser.uid !== user.uid) {
-      // The user data in the session is different from what we have
-      // This shouldn't happen, but let's handle it gracefully
-      console.warn('Session user data mismatch');
-    }
-    
-    return accessToken;
-  };
-
+  // Simple session-based API calls (no token needed since we use cookies)
   const fetchModels = async () => {
     try {
-      const token = await getAuthToken();
-      const response = await fetch('/api/models', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetch('/api/models');
       const data = await response.json();
       
       if (data.models && data.models.length > 0) {
         const modelNames = data.models.map((model: any) => model.name);
         setAvailableModels(modelNames);
         
-        // Set the first available model as default if current model isn't available
         if (!modelNames.includes(selectedModel)) {
           setSelectedModel(modelNames[0]);
         }
       }
     } catch (error) {
       console.error('Error fetching models:', error);
-      // Keep the default model if fetching fails
     }
   };
 
@@ -128,12 +103,7 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     if (!user) return;
     
     try {
-      const token = await getAuthToken();
-      const response = await fetch(`/api/chats?userUid=${user.uid}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetch('/api/chats');
       const data = await response.json();
       setChats(data.chats || []);
     } catch (error) {
@@ -145,15 +115,12 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     if (!user) throw new Error('User not authenticated');
 
     try {
-      const token = await getAuthToken();
       const response = await fetch('/api/chats', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
-          userUid: user.uid,
           summary: summary || 'New Chat',
         }),
       });
@@ -174,12 +141,7 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
 
   const loadChat = async (chatId: string) => {
     try {
-      const token = await getAuthToken();
-      const response = await fetch(`/api/chats/${chatId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetch(`/api/chats/${chatId}`);
       const data = await response.json();
       
       if (!response.ok) throw new Error(data.error);
@@ -196,12 +158,10 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     if (!currentChat) return;
 
     try {
-      const token = await getAuthToken();
       const response = await fetch(`/api/chats/${currentChat.id}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
           content,
@@ -223,14 +183,12 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
   const sendMessage = async (content: string) => {
     if (isLoading || !user) return;
 
-    // Validate that we have a chat model selected
     if (!selectedModel || !availableModels.includes(selectedModel)) {
       console.error('Invalid model selected:', selectedModel);
       alert('Please select a valid chat model');
       return;
     }
 
-    // If no current chat, create one
     if (!currentChat) {
       const chatSummary = content.slice(0, 50) + (content.length > 50 ? '...' : '');
       try {
@@ -243,7 +201,6 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
 
     let driveContext: any[] = [];
 
-    // Search Drive documents if enabled and connected
     if (driveSearchEnabled && driveConnection.isConnected) {
       try {
         const driveResults = await searchDocuments(content, 3);
@@ -270,11 +227,9 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     setMessages(prev => [...prev, userMessage]);
     setIsLoading(true);
 
-    // Save user message to database
     await saveMessage(content, 'user', [], driveContext);
 
     try {
-      // Prepare messages for Ollama, including Drive context
       let contextualContent = content;
       
       if (driveContext.length > 0) {
@@ -296,12 +251,10 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
 
       console.log('Sending chat request with model:', selectedModel);
 
-      const token = await getAuthToken();
       const response = await fetch('/api/chats', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify(requestBody),
       });
@@ -378,7 +331,6 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      // Process any remaining buffer
       if (buffer.trim()) {
         try {
           const parsed = JSON.parse(buffer);
@@ -396,7 +348,6 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      // Save assistant message to database
       await saveMessage(fullContent, selectedModel, [], driveContext);
 
     } catch (error) {

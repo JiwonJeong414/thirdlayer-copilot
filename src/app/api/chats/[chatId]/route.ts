@@ -1,4 +1,4 @@
-// src/app/api/chats/[chatId]/route.ts
+// src/app/api/chats/[chatId]/route.ts - Updated for session-based auth
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@/generated/prisma';
 
@@ -10,10 +10,20 @@ export async function GET(
   context: { params: Promise<{ chatId: string }> }
 ) {
   try {
-    const { chatId } = await context.params; // Await the params
+    const { chatId } = await context.params;
+    
+    // Check session
+    const session = request.cookies.get('session');
+    if (!session) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+
+    const { userId } = JSON.parse(session.value);
+
     const chat = await prisma.chat.findUnique({
       where: {
         id: chatId,
+        userId: userId, // Ensure user owns this chat
       },
       include: {
         messages: {
@@ -49,11 +59,28 @@ export async function POST(
   context: { params: Promise<{ chatId: string }> }
 ) {
   try {
-    const { chatId } = await context.params; // Await the params
+    const { chatId } = await context.params;
     const { content, sender, images = [] } = await request.json();
+
+    // Check session
+    const session = request.cookies.get('session');
+    if (!session) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+
+    const { userId } = JSON.parse(session.value);
 
     if (!content || !sender) {
       return NextResponse.json({ error: 'Content and sender required' }, { status: 400 });
+    }
+
+    // Verify user owns this chat
+    const chat = await prisma.chat.findUnique({
+      where: { id: chatId, userId: userId },
+    });
+
+    if (!chat) {
+      return NextResponse.json({ error: 'Chat not found' }, { status: 404 });
     }
 
     const message = await prisma.message.create({
@@ -84,11 +111,19 @@ export async function DELETE(
   context: { params: Promise<{ chatId: string }> }
 ) {
   try {
-    const { chatId } = await context.params; // Await the params
+    const { chatId } = await context.params;
     
-    // Check if chat exists
+    // Check session
+    const session = request.cookies.get('session');
+    if (!session) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+
+    const { userId } = JSON.parse(session.value);
+
+    // Check if chat exists and user owns it
     const chat = await prisma.chat.findUnique({
-      where: { id: chatId },
+      where: { id: chatId, userId: userId },
       include: { user: true }
     });
 
