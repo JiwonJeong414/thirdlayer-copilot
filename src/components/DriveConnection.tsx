@@ -1,4 +1,4 @@
-// src/components/DriveConnection.tsx
+// src/components/DriveConnection.tsx - Updated Drive connection component
 'use client';
 
 import React, { useState } from 'react';
@@ -16,7 +16,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useDrive } from '@/contexts/DriveContext';
 
 export const DriveConnectionPanel = () => {
-  const { driveConnection, connectDrive, disconnectDrive } = useAuth();
+  const { driveConnection, user } = useAuth();
   const { 
     indexedFiles, 
     isSync, 
@@ -24,25 +24,67 @@ export const DriveConnectionPanel = () => {
     syncDrive 
   } = useDrive();
   const [showDetails, setShowDetails] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
 
   const handleSync = async () => {
     try {
       await syncDrive();
     } catch (error) {
       console.error('Sync failed:', error);
+      alert('Sync failed. Please try again.');
     }
   };
 
   const handleConnect = async () => {
+    if (!user) {
+      alert('Please sign in first');
+      return;
+    }
+
+    setIsConnecting(true);
     try {
-      // Get the OAuth URL
+      console.log('Starting Drive connection process...');
+      
+      // Get the Drive-specific OAuth URL
       const response = await fetch('/api/drive/auth-url');
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to get auth URL');
+      }
+      
       const { url } = await response.json();
+      console.log('Got Drive OAuth URL, redirecting...');
       
       // Redirect to Google's OAuth page
       window.location.href = url;
     } catch (error) {
       console.error('Error connecting to Drive:', error);
+      alert(`Failed to connect to Drive: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    if (!confirm('Are you sure you want to disconnect Google Drive? This will remove all indexed documents.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/drive/disconnect', {
+        method: 'POST',
+      });
+
+      if (response.ok) {
+        // Refresh the page to update the connection status
+        window.location.reload();
+      } else {
+        throw new Error('Failed to disconnect');
+      }
+    } catch (error) {
+      console.error('Error disconnecting Drive:', error);
+      alert('Failed to disconnect Drive. Please try again.');
     }
   };
 
@@ -80,7 +122,7 @@ export const DriveConnectionPanel = () => {
                 <span>{isSync ? 'Syncing...' : 'Sync'}</span>
               </button>
               <button
-                onClick={disconnectDrive}
+                onClick={handleDisconnect}
                 className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm transition-colors"
               >
                 Disconnect
@@ -89,13 +131,29 @@ export const DriveConnectionPanel = () => {
           ) : (
             <button
               onClick={handleConnect}
-              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm transition-colors"
+              disabled={isConnecting}
+              className="flex items-center space-x-1 px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed text-white rounded text-sm transition-colors"
             >
-              Connect Drive
+              {isConnecting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Cloud className="w-4 h-4" />
+              )}
+              <span>{isConnecting ? 'Connecting...' : 'Connect Drive'}</span>
             </button>
           )}
         </div>
       </div>
+
+      {/* Connection Info */}
+      {driveConnection.isConnected && (
+        <div className="text-xs text-gray-400 mb-4">
+          Connected on {new Date(driveConnection.connectedAt || '').toLocaleDateString()}
+          {driveConnection.lastSyncAt && (
+            <span> • Last sync: {new Date(driveConnection.lastSyncAt).toLocaleDateString()}</span>
+          )}
+        </div>
+      )}
 
       {/* Sync Progress */}
       {isSync && syncProgress && (
@@ -151,7 +209,7 @@ export const DriveConnectionPanel = () => {
           <div className="text-xs text-gray-400 mb-2">INDEXED DOCUMENTS</div>
           <div className="max-h-32 overflow-y-auto space-y-1">
             {indexedFiles.length === 0 ? (
-              <p className="text-sm text-gray-500">No documents indexed yet</p>
+              <p className="text-sm text-gray-500">No documents indexed yet. Click "Sync" to start.</p>
             ) : (
               indexedFiles.map((file) => (
                 <div key={file.fileId} className="flex items-center space-x-2 p-2 bg-gray-700 rounded">
@@ -168,58 +226,6 @@ export const DriveConnectionPanel = () => {
           </div>
         </div>
       )}
-    </div>
-  );
-};
-
-// src/components/DriveSearchResults.tsx
-export const DriveSearchResults = ({ 
-  results, 
-  isVisible, 
-  onClose 
-}: { 
-  results: any[], 
-  isVisible: boolean, 
-  onClose: () => void 
-}) => {
-  if (!isVisible || results.length === 0) return null;
-
-  return (
-    <div className="absolute top-full left-0 right-0 mt-2 bg-gray-800 border border-gray-600 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto">
-      <div className="p-3 border-b border-gray-700">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-white">Drive Search Results</span>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-white text-sm"
-          >
-            Close
-          </button>
-        </div>
-      </div>
-      
-      <div className="p-2">
-        {results.map((result, index) => (
-          <div key={index} className="p-3 hover:bg-gray-700 rounded cursor-pointer">
-            <div className="flex items-start space-x-2">
-              <FileText className="w-4 h-4 text-blue-400 mt-1 flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">
-                  {result.fileName}
-                </p>
-                <p className="text-xs text-gray-400 line-clamp-2 mt-1">
-                  {result.content.substring(0, 150)}...
-                </p>
-                <div className="flex items-center space-x-2 mt-2">
-                  <span className="text-xs text-green-400">
-                    {(result.similarity * 100).toFixed(1)}% match
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
     </div>
   );
 };

@@ -1,4 +1,6 @@
-// src/contexts/AuthContext.tsx
+// Remove the old googleAuth.ts file and update your AuthContext.tsx
+// src/contexts/AuthContext.tsx - Updated to handle Drive connection properly
+
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
@@ -15,6 +17,8 @@ interface DriveConnection {
   isConnected: boolean;
   accessToken?: string;
   refreshToken?: string;
+  connectedAt?: string;
+  lastSyncAt?: string;
 }
 
 interface AuthContextType {
@@ -24,9 +28,7 @@ interface AuthContextType {
   driveConnection: DriveConnection;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
-  connectDrive: () => Promise<void>;
-  disconnectDrive: () => Promise<void>;
-  refreshDriveToken: () => Promise<void>;
+  refreshDriveConnection: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -36,9 +38,7 @@ const AuthContext = createContext<AuthContextType>({
   driveConnection: { isConnected: false },
   signInWithGoogle: async () => {},
   signOut: async () => {},
-  connectDrive: async () => {},
-  disconnectDrive: async () => {},
-  refreshDriveToken: async () => {},
+  refreshDriveConnection: async () => {},
 });
 
 export const useAuth = () => {
@@ -61,7 +61,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setError(null);
     setLoading(true);
     try {
-      // Get the OAuth URL
+      // Get the OAuth URL for main authentication
       const response = await fetch('/api/auth/google/url');
       console.log('Got response:', response.status);
       
@@ -90,58 +90,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const connectDrive = async () => {
-    setError(null);
-    setLoading(true);
+  const refreshDriveConnection = async () => {
+    if (!user) return;
+
     try {
-      // Get the OAuth URL with Drive scopes
-      const response = await fetch('/api/drive/auth-url');
-      const { url } = await response.json();
-      
-      // Redirect to Google's OAuth page
-      window.location.href = url;
-    } catch (error) {
-      console.error('Drive connection error:', error);
-      setError((error as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const disconnectDrive = async () => {
-    setError(null);
-    try {
-      const response = await fetch('/api/drive/disconnect', {
-        method: 'POST',
-      });
-
-      if (response.ok) {
-        setDriveConnection({ isConnected: false });
-      }
-    } catch (error) {
-      console.error('Drive disconnection error:', error);
-      setError((error as Error).message);
-    }
-  };
-
-  const refreshDriveToken = async () => {
-    try {
-      if (!user || !driveConnection.refreshToken) return;
-
-      const response = await fetch('/api/drive/refresh', {
-        method: 'POST',
-      });
-
+      const response = await fetch('/api/drive/status');
       if (response.ok) {
         const data = await response.json();
-        setDriveConnection(prev => ({
-          ...prev,
-          accessToken: data.accessToken,
-          expiryDate: data.expiryDate,
-        }));
+        setDriveConnection(data);
       }
     } catch (error) {
-      console.error('Token refresh error:', error);
+      console.error('Error refreshing Drive connection:', error);
     }
   };
 
@@ -182,26 +141,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     checkAuthStatus();
   }, []);
 
-  // Check Drive connection status
+  // Check Drive connection status when user changes
   useEffect(() => {
-    const checkDriveConnection = async () => {
-      if (!user) return;
-
-      try {
-        const response = await fetch('/api/drive/status');
-        if (response.ok) {
-          const data = await response.json();
-          setDriveConnection(data);
-        }
-      } catch (error) {
-        console.error('Error checking Drive connection:', error);
-      }
-    };
-
     if (user) {
-      checkDriveConnection();
+      refreshDriveConnection();
     }
   }, [user]);
+
+  // Check for Drive connection success in URL params
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('drive_connected') === 'true') {
+      // Refresh Drive connection status
+      refreshDriveConnection();
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
 
   return (
     <AuthContext.Provider
@@ -212,9 +168,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         driveConnection,
         signInWithGoogle, 
         signOut,
-        connectDrive,
-        disconnectDrive,
-        refreshDriveToken,
+        refreshDriveConnection,
       }}
     >
       {children}

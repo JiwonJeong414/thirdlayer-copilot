@@ -1,4 +1,4 @@
-// src/lib/vectorService.ts
+// src/lib/vectorService.ts - Enhanced with better error handling
 import { PrismaClient } from '@/generated/prisma';
 
 const prisma = new PrismaClient();
@@ -23,12 +23,48 @@ export interface SearchResult {
 export class VectorService {
   private static CHUNK_SIZE = 1000;
   private static CHUNK_OVERLAP = 200;
-  private static EMBEDDING_MODEL = 'mxbai-embed-large'; // This is ONLY for embeddings
+  private static EMBEDDING_MODEL = 'mxbai-embed-large';
+
+  // Check if embedding model is available
+  static async checkEmbeddingModel(): Promise<boolean> {
+    try {
+      if (!process.env.OLLAMA_ENDPOINT) {
+        console.error('OLLAMA_ENDPOINT not configured');
+        return false;
+      }
+
+      const response = await fetch(`${process.env.OLLAMA_ENDPOINT}/api/tags`);
+      if (!response.ok) {
+        console.error('Failed to fetch Ollama models');
+        return false;
+      }
+      
+      const data = await response.json();
+      const modelExists = data.models?.some((model: any) => 
+        model.name.toLowerCase().includes(this.EMBEDDING_MODEL.toLowerCase())
+      );
+      
+      if (!modelExists) {
+        console.warn(`❌ Embedding model ${this.EMBEDDING_MODEL} not found. Please run: ollama pull ${this.EMBEDDING_MODEL}`);
+      } else {
+        console.log(`✅ Embedding model ${this.EMBEDDING_MODEL} is available`);
+      }
+      
+      return modelExists;
+    } catch (error) {
+      console.error('Error checking embedding model:', error);
+      return false;
+    }
+  }
 
   // Generate embeddings using Ollama's embedding model
   static async generateEmbedding(text: string): Promise<number[]> {
     try {
-      console.log(`Generating embedding with model: ${this.EMBEDDING_MODEL}`);
+      if (!process.env.OLLAMA_ENDPOINT) {
+        throw new Error('OLLAMA_ENDPOINT not configured');
+      }
+
+      console.log(`Generating embedding for text (${text.length} chars) with model: ${this.EMBEDDING_MODEL}`);
       
       const response = await fetch(`${process.env.OLLAMA_ENDPOINT}/api/embeddings`, {
         method: 'POST',
@@ -37,7 +73,7 @@ export class VectorService {
         },
         body: JSON.stringify({
           model: this.EMBEDDING_MODEL,
-          prompt: text,
+          prompt: text.substring(0, 2000), // Limit text size for embedding
         }),
       });
 
@@ -53,32 +89,11 @@ export class VectorService {
         throw new Error('Invalid embedding response format');
       }
       
+      console.log(`✅ Generated embedding with ${data.embedding.length} dimensions`);
       return data.embedding;
     } catch (error) {
       console.error('Error generating embedding:', error);
       throw new Error(`Failed to generate embedding: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  // Check if embedding model is available
-  static async checkEmbeddingModel(): Promise<boolean> {
-    try {
-      const response = await fetch(`${process.env.OLLAMA_ENDPOINT}/api/tags`);
-      if (!response.ok) return false;
-      
-      const data = await response.json();
-      const modelExists = data.models?.some((model: any) => 
-        model.name.toLowerCase().includes(this.EMBEDDING_MODEL.toLowerCase())
-      );
-      
-      if (!modelExists) {
-        console.warn(`Embedding model ${this.EMBEDDING_MODEL} not found. Please run: ollama pull ${this.EMBEDDING_MODEL}`);
-      }
-      
-      return modelExists;
-    } catch (error) {
-      console.error('Error checking embedding model:', error);
-      return false;
     }
   }
 
@@ -121,10 +136,15 @@ export class VectorService {
     content: string
   ): Promise<void> {
     try {
-      // Check if embedding model is available
-      const modelAvailable = await this.checkEmbeddingModel();
-      if (!modelAvailable) {
-        throw new Error(`Embedding model ${this.EMBEDDING_MODEL} is not available. Please install it first.`);
+      // Check if we already have embeddings for this file
+      const existingEmbeddings = await prisma.documentEmbedding.findMany({
+        where: { fileId },
+        select: { id: true }
+      });
+
+      if (existingEmbeddings.length > 0) {
+        console.log(`Embeddings already exist for ${fileName}, skipping...`);
+        return;
       }
 
       const chunks = this.splitTextIntoChunks(content);
@@ -136,20 +156,8 @@ export class VectorService {
         try {
           const embedding = await this.generateEmbedding(chunk);
           
-          await prisma.documentEmbedding.upsert({
-            where: {
-              fileId_chunkIndex: {
-                fileId,
-                chunkIndex: i,
-              },
-            },
-            update: {
-              content: chunk,
-              embedding: embedding,
-              fileName,
-              updatedAt: new Date(),
-            },
-            create: {
+          await prisma.documentEmbedding.create({
+            data: {
               fileId,
               fileName,
               content: chunk,
@@ -159,9 +167,9 @@ export class VectorService {
             },
           });
           
-          console.log(`Processed chunk ${i + 1}/${chunks.length} for ${fileName}`);
+          console.log(`✅ Processed chunk ${i + 1}/${chunks.length} for ${fileName}`);
         } catch (chunkError) {
-          console.error(`Error processing chunk ${i} for ${fileName}:`, chunkError);
+          console.error(`❌ Error processing chunk ${i} for ${fileName}:`, chunkError);
           // Continue with other chunks instead of failing completely
         }
       }
@@ -178,14 +186,7 @@ export class VectorService {
     limit: number = 5
   ): Promise<SearchResult[]> {
     try {
-      // Check if embedding model is available
-      const modelAvailable = await this.checkEmbeddingModel();
-      if (!modelAvailable) {
-        console.warn(`Embedding model ${this.EMBEDDING_MODEL} not available, returning empty results`);
-        return [];
-      }
-
-      console.log(`Searching documents for user ${userId} with query: "${query}"`);
+      console.log(`🔍 Searching documents for user ${userId} with query: "${query}"`);
       
       const queryEmbedding = await this.generateEmbedding(query);
       
@@ -202,7 +203,7 @@ export class VectorService {
       });
 
       if (embeddings.length === 0) {
-        console.log('No embeddings found for user');
+        console.log('❌ No embeddings found for user. Make sure to sync your Drive first and that the embedding model is installed.');
         return [];
       }
 
@@ -234,7 +235,9 @@ export class VectorService {
         .sort((a, b) => b.similarity - a.similarity)
         .slice(0, limit);
       
-      console.log(`Returning ${results.length} search results`);
+      console.log(`✅ Returning ${results.length} search results with similarities:`, 
+        results.map(r => `${r.fileName}: ${(r.similarity * 100).toFixed(1)}%`));
+      
       return results;
     } catch (error) {
       console.error('Error searching similar documents:', error);
@@ -266,19 +269,6 @@ export class VectorService {
     }
 
     return dotProduct / (normA * normB);
-  }
-
-  // Delete embeddings for a specific file
-  static async deleteFileEmbeddings(fileId: string): Promise<void> {
-    try {
-      const result = await prisma.documentEmbedding.deleteMany({
-        where: { fileId },
-      });
-      console.log(`Deleted ${result.count} embeddings for file ${fileId}`);
-    } catch (error) {
-      console.error('Error deleting file embeddings:', error);
-      throw new Error('Failed to delete file embeddings');
-    }
   }
 
   // Get user's indexed files

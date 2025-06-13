@@ -16,6 +16,13 @@ export async function GET(request: NextRequest) {
     const state = searchParams.get('state');
     const error = searchParams.get('error');
 
+    console.log('OAuth callback received:', {
+      hasCode: !!code,
+      hasState: !!state,
+      error: error,
+      state: state?.substring(0, 8) + '...'
+    });
+
     // Check for OAuth errors
     if (error) {
       console.error('OAuth error:', error);
@@ -24,6 +31,12 @@ export async function GET(request: NextRequest) {
 
     // Verify state to prevent CSRF
     const storedState = request.cookies.get('oauth_state')?.value;
+    console.log('State verification:', {
+      received: state?.substring(0, 8) + '...',
+      stored: storedState?.substring(0, 8) + '...',
+      matches: state === storedState
+    });
+
     if (!state || !storedState || state !== storedState) {
       console.error('Invalid state parameter');
       return NextResponse.redirect(new URL('/?error=invalid_state', request.url));
@@ -35,6 +48,12 @@ export async function GET(request: NextRequest) {
 
     // Exchange code for tokens
     const { tokens } = await oauth2Client.getToken(code);
+    console.log('Received tokens:', {
+      hasAccessToken: !!tokens.access_token,
+      hasRefreshToken: !!tokens.refresh_token,
+      scopes: tokens.scope
+    });
+
     oauth2Client.setCredentials(tokens);
 
     // Get user info
@@ -63,6 +82,28 @@ export async function GET(request: NextRequest) {
         updatedAt: new Date(),
       },
     });
+
+    // If Drive scopes are present, update Drive connection
+    if (tokens.scope?.includes('https://www.googleapis.com/auth/drive') && tokens.access_token) {
+      await prisma.driveConnection.upsert({
+        where: { userId: user.id },
+        update: {
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token || undefined,
+          isConnected: true,
+          connectedAt: new Date(),
+          updatedAt: new Date(),
+        },
+        create: {
+          userId: user.id,
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token || undefined,
+          isConnected: true,
+          connectedAt: new Date(),
+          updatedAt: new Date(),
+        },
+      });
+    }
 
     // Store tokens in session
     const response = NextResponse.redirect(new URL('/', request.url));

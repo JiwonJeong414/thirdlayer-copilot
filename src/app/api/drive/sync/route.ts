@@ -1,4 +1,4 @@
-// src/app/api/drive/sync/route.ts
+// src/app/api/drive/sync/route.ts - Updated to generate embeddings
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@/generated/prisma';
 import { GoogleDriveService } from '@/lib/googleDrive';
@@ -32,8 +32,13 @@ export async function POST(request: NextRequest) {
     const tokenAge = Date.now() - user.driveConnection.updatedAt.getTime();
     if (tokenAge > 3600 * 1000) { // Token older than 1 hour
       console.log('Access token may be expired, attempting to refresh...');
-      // TODO: Implement token refresh logic
       return NextResponse.json({ error: 'Access token expired. Please reconnect your Drive account.' }, { status: 401 });
+    }
+
+    // Check if embedding model is available
+    const embeddingModelAvailable = await VectorService.checkEmbeddingModel();
+    if (!embeddingModelAvailable) {
+      console.warn('Embedding model not available, files will be synced but not indexed for search');
     }
 
     const driveService = new GoogleDriveService({
@@ -50,6 +55,7 @@ export async function POST(request: NextRequest) {
     let allFiles: any[] = [];
     let nextPageToken: string | undefined;
 
+    // Get all files from Drive
     do {
       const response = await driveService.listFiles(100, nextPageToken);
       allFiles = allFiles.concat(response.files);
@@ -59,9 +65,9 @@ export async function POST(request: NextRequest) {
     console.log(`Found ${allFiles.length} files in Drive`);
 
     // Process files and update database
-    const vectorService = new VectorService();
     let processedCount = 0;
     let errorCount = 0;
+    let embeddingCount = 0;
 
     for (const file of allFiles) {
       try {
@@ -89,7 +95,36 @@ export async function POST(request: NextRequest) {
           },
         });
 
+        // Generate embeddings for supported file types if model is available
+        if (embeddingModelAvailable && shouldProcessFile(file.mimeType)) {
+          try {
+            console.log(`Processing embeddings for: ${file.name}`);
+            const content = await driveService.getFileContent(file.id);
+            
+            if (content && content.trim().length > 0) {
+              await VectorService.storeDocumentEmbeddings(
+                user.id,
+                file.id,
+                file.name,
+                content
+              );
+              embeddingCount++;
+              console.log(`✅ Embeddings created for: ${file.name}`);
+            } else {
+              console.log(`⚠️  No content extracted from: ${file.name}`);
+            }
+          } catch (embeddingError) {
+            console.error(`❌ Error processing embeddings for ${file.name}:`, embeddingError);
+            // Continue with other files even if embedding fails
+          }
+        }
+
         processedCount++;
+        
+        // Progress logging every 10 files
+        if (processedCount % 10 === 0) {
+          console.log(`Progress: ${processedCount}/${allFiles.length} files processed, ${embeddingCount} embeddings created`);
+        }
       } catch (error) {
         console.error('Error processing file:', file.id, error);
         errorCount++;
@@ -105,14 +140,32 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({
+    const summary = {
       success: true,
       totalFiles: allFiles.length,
       processedCount,
       errorCount,
-    });
+      embeddingCount,
+      embeddingModelAvailable,
+    };
+
+    console.log('Sync completed:', summary);
+
+    return NextResponse.json(summary);
   } catch (error) {
     console.error('Error syncing Drive:', error);
     return NextResponse.json({ error: 'Failed to sync Drive' }, { status: 500 });
   }
-} 
+}
+
+// Helper function to determine if a file should be processed for embeddings
+function shouldProcessFile(mimeType: string): boolean {
+  const supportedTypes = [
+    'application/vnd.google-apps.document',  // Google Docs
+    'text/plain',                            // Text files
+    'application/pdf',                       // PDFs (if you add PDF processing)
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document' // Word docs
+  ];
+  
+  return supportedTypes.includes(mimeType);
+}
