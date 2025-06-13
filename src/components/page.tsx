@@ -16,14 +16,18 @@ import {
   ChevronDown,
   Database,
   Activity,
+  LogOut,
+  Menu,
+  X,
 } from 'lucide-react';
 import { useChat } from '@/contexts/ChatContext';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function MainPage() {
   const [message, setMessage] = useState('');
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   
   const {
     chats,
@@ -65,6 +69,12 @@ export default function MainPage() {
     e.stopPropagation(); // Prevent chat selection
     if (confirm('Are you sure you want to delete this chat?')) {
       await deleteChat(chatId);
+    }
+  };
+
+  const handleSignOut = async () => {
+    if (confirm('Are you sure you want to sign out?')) {
+      await signOut();
     }
   };
 
@@ -179,9 +189,10 @@ export default function MainPage() {
           )}
         </div>
 
-        {/* Bottom Section */}
+        {/* Bottom Section - User Profile */}
         <div className="p-4 border-t border-gray-700">
-          <div className="flex items-center justify-between mb-2">
+          {/* Status Section */}
+          <div className="flex items-center justify-between mb-3">
             <span className="text-xs text-gray-400">STATUS:</span>
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-1">
@@ -195,16 +206,75 @@ export default function MainPage() {
             </div>
           </div>
           
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <div className="w-6 h-6 bg-gray-600 rounded-full flex items-center justify-center">
-                <User className="w-3 h-3 text-gray-300" />
+          {/* User Profile Section */}
+          <div className="relative">
+            <div 
+              onClick={() => setShowUserMenu(!showUserMenu)}
+              className="flex items-center justify-between p-2 hover:bg-gray-700 rounded-lg cursor-pointer transition-colors"
+            >
+              <div className="flex items-center space-x-3">
+                {user?.photoURL ? (
+                  <img 
+                    src={user.photoURL} 
+                    alt="Profile" 
+                    className="w-8 h-8 rounded-full"
+                  />
+                ) : (
+                  <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center">
+                    <User className="w-4 h-4 text-gray-300" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-300 font-medium truncate">
+                    {user?.displayName || 'User'}
+                  </p>
+                  <p className="text-xs text-gray-500 truncate">
+                    {user?.email}
+                  </p>
+                </div>
               </div>
-              <span className="text-sm text-gray-300">
-                {user?.displayName || user?.email || 'User'}
-              </span>
+              <MoreHorizontal className="w-4 h-4 text-gray-400" />
             </div>
-            <Settings className="w-4 h-4 text-gray-400 cursor-pointer hover:text-white transition-colors" />
+
+            {/* User Menu Dropdown */}
+            {showUserMenu && (
+              <div className="absolute bottom-full left-0 right-0 mb-2 bg-gray-700 rounded-lg shadow-lg border border-gray-600 py-1 z-50">
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowUserMenu(false);
+                    // Add settings functionality here
+                  }}
+                  className="w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-gray-600 flex items-center space-x-2 transition-colors"
+                >
+                  <Settings className="w-4 h-4" />
+                  <span>Settings</span>
+                </button>
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowUserMenu(false);
+                    // Add help functionality here
+                  }}
+                  className="w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-gray-600 flex items-center space-x-2 transition-colors"
+                >
+                  <HelpCircle className="w-4 h-4" />
+                  <span>Help & Support</span>
+                </button>
+                <div className="border-t border-gray-600 my-1"></div>
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowUserMenu(false);
+                    handleSignOut();
+                  }}
+                  className="w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-gray-600 flex items-center space-x-2 transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -363,6 +433,14 @@ export default function MainPage() {
           </div>
         </div>
       </div>
+
+      {/* Click outside to close user menu */}
+      {showUserMenu && (
+        <div 
+          className="fixed inset-0 z-40" 
+          onClick={() => setShowUserMenu(false)}
+        />
+      )}
     </div>
   );
 };
