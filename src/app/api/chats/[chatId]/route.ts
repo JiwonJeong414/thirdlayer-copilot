@@ -7,12 +7,13 @@ const prisma = new PrismaClient();
 // Get specific chat with messages
 export async function GET(
   request: NextRequest,
-  { params }: { params: { chatId: string } }
+  context: { params: { chatId: string } }
 ) {
   try {
+    const { chatId } = context.params;
     const chat = await prisma.chat.findUnique({
       where: {
-        id: params.chatId,
+        id: chatId,
       },
       include: {
         messages: {
@@ -44,9 +45,10 @@ export async function GET(
 // Add a new message to existing chat
 export async function POST(
   request: NextRequest,
-  { params }: { params: { chatId: string } }
+  context: { params: { chatId: string } }
 ) {
   try {
+    const { chatId } = context.params;
     const { content, sender, images = [] } = await request.json();
 
     if (!content || !sender) {
@@ -58,13 +60,13 @@ export async function POST(
         content,
         sender,
         images,
-        chatId: params.chatId,
+        chatId,
       },
     });
 
     // Update chat's updatedAt timestamp
     await prisma.chat.update({
-      where: { id: params.chatId },
+      where: { id: chatId },
       data: { updatedAt: new Date() },
     });
 
@@ -78,12 +80,13 @@ export async function POST(
 // Delete a chat
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { chatId: string } }
+  context: { params: { chatId: string } }
 ) {
   try {
+    const { chatId } = context.params;
     await prisma.chat.delete({
       where: {
-        id: params.chatId,
+        id: chatId,
       },
     });
 
