@@ -7,20 +7,28 @@ const prisma = new PrismaClient();
 // Get all chats for a user
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const userUid = searchParams.get('userUid');
+    // Get user info from middleware headers
+    const uid = request.headers.get('uid');
+    const email = request.headers.get('email');
 
-    if (!userUid) {
-      return NextResponse.json({ error: 'User UID required' }, { status: 400 });
+    if (!uid) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    // Find user by UID instead of email
+    // Find user by UID
     const user = await prisma.user.findUnique({
-      where: { uid: userUid },
+      where: { uid },
     });
 
     if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      // Create user if they don't exist
+      const newUser = await prisma.user.create({
+        data: {
+          uid,
+          email: email || '',
+        },
+      });
+      return NextResponse.json({ chats: [] });
     }
 
     const chats = await prisma.chat.findMany({
@@ -50,19 +58,30 @@ export async function GET(request: NextRequest) {
 // Create a new chat
 export async function POST(request: NextRequest) {
   try {
-    const { userUid, summary, firstMessage } = await request.json();
+    const { summary, firstMessage } = await request.json();
+    const uid = request.headers.get('uid');
+    const email = request.headers.get('email');
 
-    if (!userUid || !summary) {
-      return NextResponse.json({ error: 'User UID and summary required' }, { status: 400 });
+    if (!uid) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    // Find user by UID
-    const user = await prisma.user.findUnique({
-      where: { uid: userUid },
+    if (!summary) {
+      return NextResponse.json({ error: 'Summary required' }, { status: 400 });
+    }
+
+    // Find or create user
+    let user = await prisma.user.findUnique({
+      where: { uid },
     });
 
     if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      user = await prisma.user.create({
+        data: {
+          uid,
+          email: email || '',
+        },
+      });
     }
 
     const chat = await prisma.chat.create({
@@ -92,6 +111,11 @@ export async function POST(request: NextRequest) {
 // Handle Ollama chat streaming
 export async function PUT(request: NextRequest) {
   try {
+    const uid = request.headers.get('uid');
+    if (!uid) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+
     const body = await request.json();
     
     console.log('Ollama chat request:', JSON.stringify(body, null, 2));
