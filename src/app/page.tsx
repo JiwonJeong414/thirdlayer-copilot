@@ -3,7 +3,7 @@
 
 import { useAuth } from '@/contexts/AuthContext';
 import LoginPage from '@/components/auth/LoginPage';
-import MainPage from '@/components/page';
+import MainPage from '@/components/MainPage';
 import Spinner from '@/components/ui/Spinner';
 import Protected from '@/components/layout/Protected';
 
