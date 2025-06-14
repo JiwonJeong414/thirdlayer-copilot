@@ -1,4 +1,4 @@
-// src/components/Dashboard.tsx
+// src/components/Dashboard.tsx - Clean version
 'use client';
 
 import React, { useState } from 'react';
@@ -18,7 +18,10 @@ import {
   BarChart3,
   Settings,
   TrendingUp,
-  ChevronRight
+  RefreshCw,
+  X,
+  Loader2,
+  CheckCircle
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDrive } from '@/contexts/DriveContext';
@@ -28,6 +31,12 @@ const Dashboard = () => {
   const { indexedFiles } = useDrive();
   const router = useRouter();
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
+  
+  // Sync modal states
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [selectedSyncSize, setSelectedSyncSize] = useState(25);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncResults, setSyncResults] = useState<any>(null);
 
   // Animated Drive logo layers
   const DriveLogoAnimation = () => (
@@ -95,6 +104,7 @@ const Dashboard = () => {
     </motion.div>
   );
 
+  // Feature definitions
   const features = [
     {
       id: 'chat',
@@ -149,12 +159,46 @@ const Dashboard = () => {
     }
   ];
 
+  // Quick actions with sync functionality
   const quickActions = [
     { icon: Plus, label: 'New Chat', action: () => router.push('/?chat=true') },
     { icon: Search, label: 'Search Files', action: () => router.push('/?search=true') },
-    { icon: BarChart3, label: 'Analytics', action: () => router.push('/cleaner?mode=analytics') },
+    { icon: RefreshCw, label: 'Sync Drive', action: () => setShowSyncModal(true) },
     { icon: Settings, label: 'Settings', action: () => {} },
   ];
+
+  // Handle sync functionality
+  const handleSync = async (limit: number) => {
+    setIsSyncing(true);
+    setSyncResults(null);
+
+    try {
+      const response = await fetch(`/api/drive/sync?limit=${limit}`, {
+        method: 'POST',
+      });
+      
+      if (!response.ok) {
+        throw new Error('Sync failed');
+      }
+      
+      const result = await response.json();
+      setSyncResults(result);
+      
+      // Refresh the page after a short delay
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
+      
+    } catch (error) {
+      console.error('Sync failed:', error);
+      setSyncResults({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
@@ -167,10 +211,10 @@ const Dashboard = () => {
                 className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center"
                 whileHover={{ scale: 1.05, rotate: 5 }}
               >
-                <Cloud className="w-6 h-6 text-white" />
+                <span className="text-white font-bold text-xs">TL</span>
               </motion.div>
               <div>
-                <h1 className="text-xl font-bold text-gray-900 dark:text-white">Drive AI</h1>
+                <h1 className="text-xl font-bold text-gray-900 dark:text-white">ThirdLayer</h1>
                 <p className="text-sm text-gray-500 dark:text-gray-400">Your intelligent workspace</p>
               </div>
             </div>
@@ -420,6 +464,130 @@ const Dashboard = () => {
           </div>
         </motion.div>
       </main>
+
+      {/* Sync Modal */}
+      {showSyncModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-md border border-gray-200 dark:border-gray-700">
+            {!isSyncing && !syncResults ? (
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white">Smart Sync Drive</h3>
+                  <button
+                    onClick={() => setShowSyncModal(false)}
+                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm text-gray-600 dark:text-gray-400 mb-2 block">New documents to index:</label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {[5, 10, 25, 50].map((size) => (
+                        <button
+                          key={size}
+                          onClick={() => setSelectedSyncSize(size)}
+                          className={`p-2 rounded text-center transition-colors ${
+                            selectedSyncSize === size
+                              ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border"
+                              : "border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500 border"
+                          }`}
+                        >
+                          <div className="text-lg font-medium">{size}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">docs</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="bg-gray-50 dark:bg-gray-700 rounded p-3">
+                    <p className="text-sm text-gray-700 dark:text-gray-300">
+                      Smart sync will find and index {selectedSyncSize} new documents from your Drive for AI search.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => handleSync(selectedSyncSize)}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded font-medium transition-colors"
+                  >
+                    Start Smart Sync ({selectedSyncSize} docs)
+                  </button>
+                </div>
+              </div>
+            ) : isSyncing ? (
+              <div className="p-6">
+                <div className="text-center mb-6">
+                  <Loader2 className="w-8 h-8 text-blue-600 dark:text-blue-400 animate-spin mx-auto mb-3" />
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white">Smart Syncing</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Finding and indexing documents...</p>
+                </div>
+
+                <div className="bg-gray-50 dark:bg-gray-700 rounded p-3">
+                  <p className="text-sm text-gray-700 dark:text-gray-300 text-center">
+                    Please wait while we process your documents.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="p-6">
+                <div className="text-center mb-6">
+                  {syncResults?.success ? (
+                    <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-400 mx-auto mb-3" />
+                  ) : (
+                    <X className="w-8 h-8 text-red-600 dark:text-red-400 mx-auto mb-3" />
+                  )}
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+                    {syncResults?.success ? "Sync Completed" : "Sync Failed"}
+                  </h3>
+                </div>
+
+                {syncResults?.success ? (
+                  <div className="space-y-3">
+                    <div className="bg-gray-50 dark:bg-gray-700 rounded p-3">
+                      <div className="grid grid-cols-2 gap-3 text-center text-sm">
+                        <div>
+                          <div className="text-lg font-medium text-green-600 dark:text-green-400">
+                            {syncResults.embeddingCount || 0}
+                          </div>
+                          <div className="text-gray-600 dark:text-gray-400">Indexed</div>
+                        </div>
+                        <div>
+                          <div className="text-lg font-medium text-blue-600 dark:text-blue-400">
+                            {syncResults.totalIndexedFiles || 0}
+                          </div>
+                          <div className="text-gray-600 dark:text-gray-400">Total</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded p-3">
+                    <p className="text-sm text-red-700 dark:text-red-300">
+                      {syncResults?.error || "Unknown error occurred"}
+                    </p>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => {
+                    setShowSyncModal(false);
+                    setSyncResults(null);
+                  }}
+                  className={`w-full py-2 rounded font-medium transition-colors mt-4 ${
+                    syncResults?.success
+                      ? "bg-green-600 hover:bg-green-700 text-white"
+                      : "bg-gray-600 hover:bg-gray-700 text-white"
+                  }`}
+                >
+                  {syncResults?.success ? "Done" : "Close"}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

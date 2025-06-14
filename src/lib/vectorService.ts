@@ -1,7 +1,5 @@
 // src/lib/vectorService.ts - DEBUGGING VERSION to fix Prisma errors
-import { PrismaClient } from '@/generated/prisma';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/prisma';
 
 export class VectorService {
   private static CHUNK_SIZE = 800;
