@@ -1,48 +1,22 @@
-// src/lib/vectorService.ts - IMPROVED VERSION
+// src/lib/vectorService.ts - DEBUGGING VERSION to fix Prisma errors
 import { PrismaClient } from '@/generated/prisma';
 
 const prisma = new PrismaClient();
 
-export interface DocumentChunk {
-  id: string;
-  content: string;
-  embedding: number[];
-  fileId: string;
-  fileName: string;
-  chunkIndex: number;
-  userId: string;
-  metadata?: {
-    wordCount: number;
-    section?: string;
-    docType: string;
-  };
-}
-
-export interface SearchResult {
-  content: string;
-  fileName: string;
-  fileId: string;
-  similarity: number;
-  relevanceScore: number;
-  chunkIndex: number;
-  metadata?: any;
-}
-
 export class VectorService {
-  private static CHUNK_SIZE = 800; // Slightly smaller for better coherence
+  private static CHUNK_SIZE = 800;
   private static CHUNK_OVERLAP = 150;
   private static EMBEDDING_MODEL = 'mxbai-embed-large';
-  private static MIN_CHUNK_SIZE = 100; // Skip very small chunks
-  private static RELEVANCE_THRESHOLD = 0.3; // Filter low-relevance results
+  private static MIN_CHUNK_SIZE = 50;
+  private static MIN_DOCUMENT_SIZE = 20;
+  private static RELEVANCE_THRESHOLD = 0.3;
 
-  // Enhanced embedding generation with context
   static async generateEmbedding(text: string, context?: { fileName?: string, docType?: string }): Promise<number[]> {
     try {
       if (!process.env.OLLAMA_ENDPOINT) {
         throw new Error('OLLAMA_ENDPOINT not configured');
       }
 
-      // Add context to improve embedding quality
       let promptText = text;
       if (context?.fileName) {
         promptText = `Document: ${context.fileName}\n\nContent: ${text}`;
@@ -81,14 +55,24 @@ export class VectorService {
     }
   }
 
-  // Improved text chunking with semantic awareness
   static splitTextIntoChunks(text: string, fileName: string): { content: string; metadata: any }[] {
     const chunks: { content: string; metadata: any }[] = [];
     
-    // Detect document type
+    if (text.length <= this.CHUNK_SIZE) {
+      console.log(`📝 Small document (${text.length} chars) - creating single chunk`);
+      chunks.push({
+        content: text.trim(),
+        metadata: {
+          wordCount: text.split(' ').length,
+          docType: 'small',
+          chunkIndex: 0,
+        }
+      });
+      return chunks;
+    }
+    
     const docType = this.detectDocumentType(fileName, text);
     
-    // Handle different document types differently
     if (docType === 'structured') {
       return this.chunkStructuredDocument(text, fileName);
     } else {
@@ -97,7 +81,6 @@ export class VectorService {
   }
 
   private static detectDocumentType(fileName: string, text: string): string {
-    // Check for structured document indicators
     const hasHeaders = /^#{1,6}\s/.test(text) || /^\d+\.\s/.test(text);
     const hasList = /^[\*\-\+]\s/m.test(text) || /^\d+\.\s/m.test(text);
     const isCode = fileName.includes('.') && (fileName.endsWith('.js') || fileName.endsWith('.py') || fileName.endsWith('.md'));
@@ -110,8 +93,6 @@ export class VectorService {
 
   private static chunkStructuredDocument(text: string, fileName: string): { content: string; metadata: any }[] {
     const chunks: { content: string; metadata: any }[] = [];
-    
-    // Split by double newlines (paragraphs) first
     const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim().length > 0);
     
     let currentChunk = '';
@@ -120,23 +101,18 @@ export class VectorService {
     for (let i = 0; i < paragraphs.length; i++) {
       const paragraph = paragraphs[i].trim();
       
-      // Check if adding this paragraph would exceed chunk size
       if (currentChunk.length + paragraph.length > this.CHUNK_SIZE && currentChunk.length > 0) {
-        // Save current chunk
-        if (currentChunk.length >= this.MIN_CHUNK_SIZE) {
-          chunks.push({
-            content: currentChunk.trim(),
-            metadata: {
-              wordCount: currentChunk.split(' ').length,
-              section: this.extractSection(currentChunk),
-              docType: 'structured',
-              chunkIndex,
-            }
-          });
-          chunkIndex++;
-        }
+        chunks.push({
+          content: currentChunk.trim(),
+          metadata: {
+            wordCount: currentChunk.split(' ').length,
+            section: this.extractSection(currentChunk),
+            docType: 'structured',
+            chunkIndex,
+          }
+        });
+        chunkIndex++;
         
-        // Start new chunk with overlap
         const words = currentChunk.split(' ');
         const overlapWords = words.slice(-Math.floor(this.CHUNK_OVERLAP / 5));
         currentChunk = overlapWords.join(' ') + '\n\n' + paragraph;
@@ -145,8 +121,7 @@ export class VectorService {
       }
     }
     
-    // Add final chunk
-    if (currentChunk.length >= this.MIN_CHUNK_SIZE) {
+    if (currentChunk.trim().length > 0) {
       chunks.push({
         content: currentChunk.trim(),
         metadata: {
@@ -163,8 +138,6 @@ export class VectorService {
 
   private static chunkPlainText(text: string, fileName: string): { content: string; metadata: any }[] {
     const chunks: { content: string; metadata: any }[] = [];
-    
-    // Use improved sentence splitting
     const sentences = this.splitIntoSentences(text);
     
     let currentChunk = '';
@@ -172,19 +145,16 @@ export class VectorService {
     
     for (const sentence of sentences) {
       if (currentChunk.length + sentence.length > this.CHUNK_SIZE && currentChunk.length > 0) {
-        if (currentChunk.length >= this.MIN_CHUNK_SIZE) {
-          chunks.push({
-            content: currentChunk.trim(),
-            metadata: {
-              wordCount: currentChunk.split(' ').length,
-              docType: 'plain',
-              chunkIndex,
-            }
-          });
-          chunkIndex++;
-        }
+        chunks.push({
+          content: currentChunk.trim(),
+          metadata: {
+            wordCount: currentChunk.split(' ').length,
+            docType: 'plain',
+            chunkIndex,
+          }
+        });
+        chunkIndex++;
         
-        // Create overlap
         const words = currentChunk.split(' ');
         const overlapWords = words.slice(-Math.floor(this.CHUNK_OVERLAP / 5));
         currentChunk = overlapWords.join(' ') + ' ' + sentence;
@@ -193,7 +163,7 @@ export class VectorService {
       }
     }
     
-    if (currentChunk.length >= this.MIN_CHUNK_SIZE) {
+    if (currentChunk.trim().length > 0) {
       chunks.push({
         content: currentChunk.trim(),
         metadata: {
@@ -208,7 +178,6 @@ export class VectorService {
   }
 
   private static splitIntoSentences(text: string): string[] {
-    // Improved sentence splitting that handles edge cases
     return text
       .split(/(?<=[.!?])\s+(?=[A-Z])/)
       .filter(s => s.trim().length > 0)
@@ -216,12 +185,11 @@ export class VectorService {
   }
 
   private static extractSection(text: string): string | undefined {
-    // Try to extract section headers
     const headerMatch = text.match(/^#{1,6}\s+(.+)$/m) || text.match(/^(\d+\.?\s+[A-Z][^.\n]+)/m);
     return headerMatch ? headerMatch[1].trim() : undefined;
   }
 
-  // Enhanced storage with metadata
+  // FIXED: Better error handling and debugging for Prisma issues
   static async storeDocumentEmbeddings(
     userId: string,
     fileId: string,
@@ -229,65 +197,139 @@ export class VectorService {
     content: string
   ): Promise<void> {
     try {
-      // Check for existing embeddings
-      const existingEmbeddings = await prisma.documentEmbedding.findMany({
-        where: { fileId },
-        select: { id: true }
-      });
+      if (content.trim().length < this.MIN_DOCUMENT_SIZE) {
+        console.log(`❌ Document too small to process: ${fileName} (${content.length} chars)`);
+        throw new Error(`Document content too small (${content.length} chars, minimum ${this.MIN_DOCUMENT_SIZE})`);
+      }
 
-      if (existingEmbeddings.length > 0) {
-        console.log(`Embeddings already exist for ${fileName}, skipping...`);
+      // FIXED: More thorough existing embeddings check with better error handling
+      let existingCount = 0;
+      try {
+        existingCount = await prisma.documentEmbedding.count({
+          where: { 
+            fileId: fileId,
+            userId: userId 
+          }
+        });
+      } catch (countError) {
+        console.error(`❌ Error checking existing embeddings for ${fileName}:`, countError);
+        throw new Error(`Failed to check existing embeddings: ${countError instanceof Error ? countError.message : 'Unknown error'}`);
+      }
+
+      if (existingCount > 0) {
+        console.log(`⚠️ Embeddings already exist for ${fileName} (${existingCount} chunks), skipping...`);
         return;
       }
 
       const chunks = this.splitTextIntoChunks(content, fileName);
-      console.log(`Processing ${chunks.length} chunks for file: ${fileName}`);
+      console.log(`📊 Processing ${chunks.length} chunks for file: ${fileName}`);
       
+      if (chunks.length === 0) {
+        console.log(`❌ No chunks created for ${fileName} - content might be too small or invalid`);
+        throw new Error(`No valid chunks created for ${fileName}`);
+      }
+      
+      let successfulChunks = 0;
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
         
         try {
+          console.log(`   🧠 Creating embedding for chunk ${i + 1}/${chunks.length} (${chunk.content.length} chars)`);
+          
           const embedding = await this.generateEmbedding(
             chunk.content, 
             { fileName, docType: chunk.metadata.docType }
           );
           
-          await prisma.documentEmbedding.create({
-            data: {
-              fileId,
-              fileName,
-              content: chunk.content,
-              embedding: embedding,
+          // FIXED: Add validation and better error handling for database insert
+          console.log(`   💾 Storing embedding in database...`);
+          console.log(`   📊 Embedding info: ${embedding.length} dimensions, userId: ${userId}, fileId: ${fileId}`);
+          
+          // Validate the embedding data before inserting
+          if (!Array.isArray(embedding) || embedding.length === 0) {
+            throw new Error(`Invalid embedding format: ${typeof embedding}`);
+          }
+          
+          if (!userId || !fileId || !fileName) {
+            throw new Error(`Missing required fields: userId=${userId}, fileId=${fileId}, fileName=${fileName}`);
+          }
+
+          // FIXED: Check for duplicate before inserting
+          const duplicate = await prisma.documentEmbedding.findFirst({
+            where: {
+              fileId: fileId,
               chunkIndex: i,
-              userId,
-              metadata: chunk.metadata,
+              userId: userId
+            }
+          });
+
+          if (duplicate) {
+            console.log(`   ⚠️ Chunk ${i} already exists for ${fileName}, skipping...`);
+            continue;
+          }
+
+          const result = await prisma.documentEmbedding.create({
+            data: {
+              fileId: fileId,
+              fileName: fileName,
+              content: chunk.content,
+              embedding: embedding, // Make sure this is a proper array
+              chunkIndex: i,
+              userId: userId,
+              metadata: chunk.metadata || {}, // Ensure metadata is never null
             },
           });
           
-          console.log(`✅ Processed chunk ${i + 1}/${chunks.length} for ${fileName} (${chunk.metadata.wordCount} words)`);
+          successfulChunks++;
+          console.log(`   ✅ Chunk ${i + 1} stored successfully with ID: ${result.id}`);
         } catch (chunkError) {
-          console.error(`❌ Error processing chunk ${i} for ${fileName}:`, chunkError);
+          console.error(`   ❌ DETAILED Error processing chunk ${i} for ${fileName}:`, {
+            error: chunkError,
+            chunkContent: chunk.content.substring(0, 100) + '...',
+            chunkMetadata: chunk.metadata,
+            userId,
+            fileId,
+            fileName,
+            chunkIndex: i
+          });
+          
+          // Log the full Prisma error for debugging
+          if (chunkError instanceof Error) {
+            console.error(`   🔍 Full error details:`, {
+              name: chunkError.name,
+              message: chunkError.message,
+              stack: chunkError.stack
+            });
+          }
+          
+          throw chunkError; // Re-throw to fail the entire document
         }
       }
+      
+      console.log(`🎉 Successfully processed ${successfulChunks}/${chunks.length} chunks for ${fileName}`);
     } catch (error) {
-      console.error('Error storing document embeddings:', error);
+      console.error(`💥 FULL Error storing document embeddings for ${fileName}:`, {
+        error,
+        userId,
+        fileId,
+        fileName,
+        contentLength: content.length
+      });
       throw new Error(`Failed to store document embeddings: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
-  // Enhanced search with better ranking
+  // FIXED: Better error handling for search
   static async searchSimilarDocuments(
     userId: string,
     query: string,
     limit: number = 5
-  ): Promise<SearchResult[]> {
+  ): Promise<any[]> {
     try {
       console.log(`🔍 Enhanced search for user ${userId} with query: "${query}"`);
       
-      // Generate query embedding
       const queryEmbedding = await this.generateEmbedding(query);
       
-      // Get all embeddings for the user
       const embeddings = await prisma.documentEmbedding.findMany({
         where: { userId },
         select: {
@@ -308,12 +350,9 @@ export class VectorService {
 
       console.log(`Found ${embeddings.length} embeddings to search`);
 
-      // Calculate similarities with enhanced scoring
       const similarities = embeddings.map((doc) => {
         try {
           const similarity = this.cosineSimilarity(queryEmbedding, doc.embedding as number[]);
-          
-          // Enhanced relevance scoring
           const relevanceScore = this.calculateRelevanceScore(query, doc.content, similarity, doc.metadata as any);
           
           return {
@@ -324,14 +363,13 @@ export class VectorService {
             relevanceScore,
             chunkIndex: doc.chunkIndex,
             metadata: doc.metadata as any,
-          } as SearchResult;
+          };
         } catch (error) {
           console.error(`Error calculating similarity for doc ${doc.id}:`, error);
           return null;
         }
-      }).filter((result): result is SearchResult => result !== null);
+      }).filter((result): result is any => result !== null);
 
-      // Filter by relevance threshold and sort by relevance score
       const results = similarities
         .filter(result => result.similarity > this.RELEVANCE_THRESHOLD)
         .sort((a, b) => b.relevanceScore - a.relevanceScore)
@@ -347,7 +385,6 @@ export class VectorService {
     }
   }
 
-  // Enhanced relevance scoring
   private static calculateRelevanceScore(
     query: string, 
     content: string, 
@@ -356,7 +393,6 @@ export class VectorService {
   ): number {
     let score = similarity;
     
-    // Boost score for exact keyword matches
     const queryWords = query.toLowerCase().split(' ').filter(w => w.length > 2);
     const contentLower = content.toLowerCase();
     
@@ -370,20 +406,17 @@ export class VectorService {
     const keywordBoost = (keywordMatches / queryWords.length) * 0.2;
     score += keywordBoost;
     
-    // Boost score for longer, more substantial chunks
     if (metadata?.wordCount > 100) {
       score += 0.1;
     }
     
-    // Boost score for structured content (often more informative)
     if (metadata?.docType === 'structured') {
       score += 0.05;
     }
     
-    return Math.min(score, 1.0); // Cap at 1.0
+    return Math.min(score, 1.0);
   }
 
-  // Same cosine similarity function (this part was already good)
   static cosineSimilarity(vecA: number[], vecB: number[]): number {
     if (vecA.length !== vecB.length) {
       throw new Error(`Vector length mismatch: ${vecA.length} vs ${vecB.length}`);
@@ -409,7 +442,7 @@ export class VectorService {
     return dotProduct / (normA * normB);
   }
 
-  // Enhanced file stats
+  // FIXED: Better error handling for getUserIndexedFiles
   static async getUserIndexedFiles(userId: string): Promise<{
     fileId: string;
     fileName: string;
@@ -419,6 +452,8 @@ export class VectorService {
     docType: string;
   }[]> {
     try {
+      console.log(`📊 Getting indexed files for user: ${userId}`);
+      
       const result = await prisma.documentEmbedding.groupBy({
         by: ['fileId', 'fileName'],
         where: { userId },
@@ -426,38 +461,55 @@ export class VectorService {
         _max: { updatedAt: true },
       });
 
-      // Get additional metadata for each file
+      console.log(`📈 Found ${result.length} unique files with embeddings`);
+
       const enrichedResults = await Promise.all(
         result.map(async (item) => {
-          const chunks = await prisma.documentEmbedding.findMany({
-            where: { fileId: item.fileId, userId },
-            select: { metadata: true },
-          });
-          
-          const totalWords = chunks.reduce((sum, chunk) => 
-            sum + ((chunk.metadata as any)?.wordCount || 0), 0);
-          
-          const docType = (chunks[0]?.metadata as any)?.docType || 'unknown';
-          
-          return {
-            fileId: item.fileId,
-            fileName: item.fileName,
-            chunkCount: item._count.id,
-            lastUpdated: item._max.updatedAt!,
-            totalWords,
-            docType,
-          };
+          try {
+            const chunks = await prisma.documentEmbedding.findMany({
+              where: { fileId: item.fileId, userId },
+              select: { metadata: true },
+            });
+            
+            const totalWords = chunks.reduce((sum, chunk) => 
+              sum + ((chunk.metadata as any)?.wordCount || 0), 0);
+            
+            const docType = (chunks[0]?.metadata as any)?.docType || 'unknown';
+            
+            return {
+              fileId: item.fileId,
+              fileName: item.fileName,
+              chunkCount: item._count.id,
+              lastUpdated: item._max.updatedAt!,
+              totalWords,
+              docType,
+            };
+          } catch (itemError) {
+            console.error(`Error processing file ${item.fileId}:`, itemError);
+            return {
+              fileId: item.fileId,
+              fileName: item.fileName,
+              chunkCount: item._count.id,
+              lastUpdated: item._max.updatedAt!,
+              totalWords: 0,
+              docType: 'error',
+            };
+          }
         })
       );
 
       return enrichedResults;
     } catch (error) {
-      console.error('Error getting enhanced user indexed files:', error);
-      throw new Error('Failed to get indexed files');
+      console.error('DETAILED error getting user indexed files:', {
+        error,
+        userId,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        errorStack: error instanceof Error ? error.stack : undefined
+      });
+      throw new Error(`Failed to get indexed files: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
-  // Check if embedding model is available (same as before)
   static async checkEmbeddingModel(): Promise<boolean> {
     try {
       if (!process.env.OLLAMA_ENDPOINT) {

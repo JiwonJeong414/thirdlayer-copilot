@@ -1,4 +1,4 @@
-// prisma/schema.prisma
+// prisma/schema.prisma - FIXED VERSION
 generator client {
   provider = "prisma-client-js"
   output   = "../src/generated/prisma"
@@ -90,8 +90,8 @@ model DocumentEmbedding {
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Composite unique constraint to prevent duplicate chunks
-  @@unique([fileId, chunkIndex], name: "fileId_chunkIndex")
+  // FIXED: Include userId in the unique constraint
+  @@unique([fileId, chunkIndex, userId], name: "fileId_chunkIndex_userId")
   @@map("document_embeddings")
 }
 
