@@ -4,8 +4,8 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import Protected from '@/components/layout/Protected';
-import Spinner from '@/components/ui/Spinner';
+import Protected from '@/components/Protected';
+import Spinner from '@/components/Spinner';
 import { 
   DriveCleanerDashboard,
   SwipeToCleanUI,

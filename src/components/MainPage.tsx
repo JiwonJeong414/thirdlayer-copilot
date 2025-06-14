@@ -2,8 +2,8 @@
 'use client';
 
 import React from 'react';
-import Sidebar from './sidebar/Sidebar';
-import ChatArea from './chat/ChatArea';
+import Sidebar from './Sidebar';
+import ChatArea from './ChatArea';
 
 export default function MainPage() {
   return (

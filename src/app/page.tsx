@@ -2,10 +2,10 @@
 'use client';
 
 import { useAuth } from '@/contexts/AuthContext';
-import LoginPage from '@/components/auth/LoginPage';
+import LoginPage from '@/components/LoginPage';
 import MainPage from '@/components/MainPage';
-import Spinner from '@/components/ui/Spinner';
-import Protected from '@/components/layout/Protected';
+import Spinner from '@/components/Spinner';
+import Protected from '@/components/Protected';
 
 export default function Home() {
   const { user, loading } = useAuth();
