@@ -1,4 +1,4 @@
-// prisma/schema.prisma
+// prisma/schema.prisma - FIXED VERSION
 generator client {
   provider = "prisma-client-js"
   output   = "../src/generated/prisma"
@@ -23,6 +23,7 @@ model User {
   driveConnection     DriveConnection?
   documents           Document[]
   documentEmbeddings  DocumentEmbedding[]
+  cleanupActivities   CleanupActivity[]
 
   @@map("users")
 }
@@ -83,14 +84,15 @@ model DocumentEmbedding {
   embedding  Float[]  // Vector embedding
   chunkIndex Int      // Index of chunk within the document
   userId     String
+  metadata   Json?    // Store chunk metadata like wordCount, docType, etc.
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Composite unique constraint to prevent duplicate chunks
-  @@unique([fileId, chunkIndex], name: "fileId_chunkIndex")
+  // FIXED: Include userId in the unique constraint
+  @@unique([fileId, chunkIndex, userId], name: "fileId_chunkIndex_userId")
   @@map("document_embeddings")
 }
 
@@ -108,4 +110,18 @@ model Document {
   updatedAt   DateTime @updatedAt
 
   @@index([userId])
+}
+
+model CleanupActivity {
+  id               String    @id @default(cuid())
+  userId           String
+  filesDeleted     Int
+  filesRequested   Int
+  errors           Int
+  deletedFileNames String[]  // Array of deleted file names
+  timestamp        DateTime  @default(now())
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("cleanup_activities")
 }

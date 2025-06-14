@@ -1,4 +1,4 @@
-// src/app/api/drive/sync/route.ts - FAST version that processes only recent files
+// src/app/api/drive/sync/route.ts - FIXED VERSION
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@/generated/prisma';
 import { GoogleDriveService } from '@/lib/googleDrive';
@@ -13,10 +13,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    // Parse query parameters for limiting
     const url = new URL(request.url);
-    const limitParam = url.searchParams.get('limit');
-    const maxFiles = limitParam ? parseInt(limitParam) : 10; // Default to 10 files for testing
+    const targetNewDocs = parseInt(url.searchParams.get('limit') || '10');
+    const forceReindex = url.searchParams.get('force') === 'true';
 
     const { userId } = JSON.parse(session.value);
     const user = await prisma.user.findUnique({
@@ -30,13 +29,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Drive not connected' }, { status: 400 });
     }
 
-    console.log(`🚀 Starting QUICK sync for user ${userId} - processing max ${maxFiles} files`);
+    console.log(`🚀 Starting sync for user ${userId} - targeting ${targetNewDocs} documents (force: ${forceReindex})`);
     
-    // Check if embedding model is available
+    // Check embedding model
     const embeddingModelAvailable = await VectorService.checkEmbeddingModel();
     if (!embeddingModelAvailable) {
-      console.warn('⚠️  Embedding model not available, files will be synced but not indexed for search');
-      // Continue anyway - at least sync the file metadata
+      return NextResponse.json({ 
+        error: 'Embedding model not available',
+        details: 'Please run: ollama pull mxbai-embed-large'
+      }, { status: 400 });
     }
 
     const driveService = new GoogleDriveService({
@@ -44,22 +45,112 @@ export async function POST(request: NextRequest) {
       refresh_token: user.driveConnection.refreshToken || undefined,
     });
 
-    // Get only the first page of files (100 max) and limit further
-    const response = await driveService.listFiles(100); // Just first page
-    const filesToProcess = response.files.slice(0, maxFiles); // Limit to maxFiles
+    // Get existing embeddings (files that have been processed for embeddings)
+    const existingEmbeddings = await prisma.documentEmbedding.findMany({
+      where: { userId: user.id },
+      select: { fileId: true },
+      distinct: ['fileId']
+    });
+    
+    const processedFileIds = new Set(existingEmbeddings.map(doc => doc.fileId));
+    console.log(`📊 Currently processed files: ${processedFileIds.size}`);
 
-    console.log(`📁 Found ${response.files.length} total files, processing ${filesToProcess.length} files`);
+    // Fetch files from Drive
+    let allFiles: any[] = [];
+    let nextPageToken: string | undefined;
+    let processableFilesFound = 0;
+    const maxPagesToFetch = 20; // Reduced to be more reasonable
+    let pagesFetched = 0;
 
+    console.log('🔍 Fetching files from Google Drive...');
+
+    do {
+      const pageFiles = await driveService.listFiles({
+        userId: user.id,
+        id: user.driveConnection.id,
+        accessToken: user.driveConnection.accessToken,
+        refreshToken: user.driveConnection.refreshToken,
+        isConnected: user.driveConnection.isConnected,
+        connectedAt: user.driveConnection.connectedAt,
+        lastSyncAt: user.driveConnection.lastSyncAt
+      });
+      
+      if (!pageFiles || pageFiles.length === 0) {
+        console.log('No more files found, breaking...');
+        break;
+      }
+      
+      allFiles = allFiles.concat(pageFiles);
+      
+      // Count processable files on this page
+      const pageProcessableFiles = pageFiles.filter((file: any) => shouldProcessFile(file.mimeType));
+      processableFilesFound += pageProcessableFiles.length;
+      
+      console.log(`📄 Page ${pagesFetched + 1}: ${pageFiles.length} total files, ${pageProcessableFiles.length} processable files`);
+      console.log(`   Sample files: ${pageFiles.slice(0, 3).map((f: any) => `${f.name} (${f.mimeType})`).join(', ')}`);
+      
+      pagesFetched++;
+      
+      // Continue until we have enough processable files OR hit the page limit
+    } while (pagesFetched < maxPagesToFetch);
+
+    console.log(`📈 Total files fetched: ${allFiles.length}, processable: ${allFiles.filter(f => shouldProcessFile(f.mimeType)).length}`);
+
+    // Filter to get processable files
+    const processableFiles = allFiles.filter(file => shouldProcessFile(file.mimeType));
+    
+    // Select files to process based on mode
+    let filesToProcess: any[] = [];
+    
+    if (forceReindex) {
+      // Force mode: take first N processable files regardless of processing status
+      filesToProcess = processableFiles.slice(0, targetNewDocs);
+      console.log(`🔄 Force reindex mode: selected ${filesToProcess.length} processable files`);
+    } else {
+      // Normal mode: only files that haven't been processed for embeddings
+      const unprocessedFiles = processableFiles.filter(file => !processedFileIds.has(file.id));
+      filesToProcess = unprocessedFiles.slice(0, targetNewDocs);
+      
+      console.log(`🆕 New files mode: found ${unprocessedFiles.length} unprocessed files, selected ${filesToProcess.length}`);
+      
+      if (unprocessedFiles.length === 0) {
+        return NextResponse.json({
+          success: true,
+          message: 'All processable files have already been indexed!',
+          strategy: 'new_files_only',
+          targetDocuments: targetNewDocs,
+          totalFilesInDrive: allFiles.length,
+          processableFilesInDrive: processableFiles.length,
+          newFilesAvailable: 0,
+          processedCount: 0,
+          embeddingCount: 0,
+          skippedCount: 0,
+          errorCount: 0,
+          processedFiles: [],
+          totalIndexedFiles: processedFileIds.size,
+          embeddingModelAvailable,
+        });
+      }
+    }
+
+    // Process the selected files
     let processedCount = 0;
     let errorCount = 0;
     let embeddingCount = 0;
     let skippedCount = 0;
+    const processedFiles: string[] = [];
 
-    for (const file of filesToProcess) {
+    console.log(`🎯 Processing ${filesToProcess.length} selected files...`);
+
+    for (let i = 0; i < filesToProcess.length; i++) {
+      const file = filesToProcess[i];
+      
       try {
-        console.log(`📄 Processing ${processedCount + 1}/${filesToProcess.length}: ${file.name}`);
+        console.log(`\n📁 Processing ${i + 1}/${filesToProcess.length}: ${file.name}`);
+        console.log(`   File ID: ${file.id}`);
+        console.log(`   File Type: ${file.mimeType}`);
 
-        // Update or create file record
+        // Update file record in documents table (this is separate from embeddings)
         await prisma.document.upsert({
           where: { driveId: file.id },
           update: {
@@ -83,50 +174,50 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        // Check if we already have embeddings for this file
-        if (embeddingModelAvailable) {
-          const existingEmbeddings = await prisma.documentEmbedding.findFirst({
-            where: { fileId: file.id },
-            select: { id: true }
+        // Handle embeddings
+        if (forceReindex) {
+          // In force mode, delete existing embeddings first
+          const deletedCount = await prisma.documentEmbedding.deleteMany({
+            where: { fileId: file.id, userId: user.id }
           });
+          if (deletedCount.count > 0) {
+            console.log(`   🗑️  Deleted ${deletedCount.count} existing embeddings for force reindex`);
+          }
+        }
 
-          if (existingEmbeddings) {
-            console.log(`⏭️  Embeddings already exist for: ${file.name}`);
-            skippedCount++;
-          } else if (shouldProcessFile(file.mimeType)) {
-            try {
-              console.log(`🔄 Creating embeddings for: ${file.name}`);
-              const content = await driveService.getFileContent(file.id);
-              
-              if (content && content.trim().length > 0) {
-                await VectorService.storeDocumentEmbeddings(
-                  user.id,
-                  file.id,
-                  file.name,
-                  content
-                );
-                embeddingCount++;
-                console.log(`✅ Embeddings created for: ${file.name}`);
-              } else {
-                console.log(`⚠️  No content extracted from: ${file.name}`);
-              }
-            } catch (embeddingError) {
-              console.error(`❌ Error processing embeddings for ${file.name}:`, embeddingError);
-            }
+        // Always try to create embeddings (they shouldn't exist at this point)
+        try {
+          console.log(`   📝 Extracting content from ${file.name}...`);
+          const content = await driveService.getFileContent(file.id);
+          
+          if (content && content.trim().length > 50) {
+            console.log(`   🧠 Creating embeddings for ${file.name} (${content.length} chars)...`);
+            await VectorService.storeDocumentEmbeddings(
+              user.id,
+              file.id,
+              file.name,
+              content
+            );
+            embeddingCount++;
+            processedFiles.push(file.name);
+            console.log(`   ✅ Successfully processed ${file.name}`);
           } else {
-            console.log(`⏭️  Skipping unsupported file type: ${file.name} (${file.mimeType})`);
+            console.log(`   ⚠️  Insufficient content in ${file.name} (${content?.length || 0} chars) - skipping`);
             skippedCount++;
           }
+        } catch (embeddingError) {
+          console.error(`   ❌ Failed to create embeddings for ${file.name}:`, embeddingError);
+          skippedCount++;
         }
 
         processedCount++;
       } catch (error) {
-        console.error(`❌ Error processing file ${file.id}:`, error);
+        console.error(`💥 ERROR processing file ${file.id} (${file.name}):`, error);
         errorCount++;
       }
     }
 
-    // Update last sync time
+    // Update sync time
     await prisma.driveConnection.update({
       where: { userId: user.id },
       data: {
@@ -135,23 +226,46 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Get final count of indexed files
+    const finalIndexedFiles = await prisma.documentEmbedding.findMany({
+      where: { userId: user.id },
+      select: { fileId: true },
+      distinct: ['fileId']
+    });
+
     const summary = {
       success: true,
-      message: `Quick sync completed! Processed ${processedCount} files.`,
-      totalFilesInDrive: response.files.length,
+      message: `Sync completed! Successfully indexed ${embeddingCount} documents.`,
+      strategy: forceReindex ? 'force_reindex' : 'new_files_only',
+      targetDocuments: targetNewDocs,
+      totalFilesInDrive: allFiles.length,
+      processableFilesInDrive: processableFiles.length,
+      newFilesAvailable: processableFiles.filter(f => !processedFileIds.has(f.id)).length,
       processedCount,
-      errorCount,
       embeddingCount,
       skippedCount,
+      errorCount,
+      processedFiles: processedFiles.slice(0, 10), // Show first 10
+      totalIndexedFiles: finalIndexedFiles.length,
       embeddingModelAvailable,
-      isQuickSync: true,
-      note: `This was a quick sync of ${maxFiles} files. Use ?limit=50 to process more files.`
+      debug: {
+        pagesSearched: pagesFetched,
+        selectedFilesCount: filesToProcess.length,
+        startingIndexedFiles: processedFileIds.size,
+        finalIndexedFiles: finalIndexedFiles.length,
+      }
     };
 
-    console.log('🎉 Quick sync completed:', summary);
+    console.log('🎉 Sync completed successfully:', {
+      embeddingCount,
+      skippedCount,
+      errorCount,
+      totalIndexed: finalIndexedFiles.length
+    });
+
     return NextResponse.json(summary);
   } catch (error) {
-    console.error('❌ Error in quick sync:', error);
+    console.error('💥 CRITICAL ERROR in sync:', error);
     return NextResponse.json({ 
       error: 'Failed to sync Drive',
       details: error instanceof Error ? error.message : 'Unknown error'
@@ -159,13 +273,12 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Helper function to determine if a file should be processed for embeddings
 function shouldProcessFile(mimeType: string): boolean {
   const supportedTypes = [
-    'application/vnd.google-apps.document',  // Google Docs
-    'text/plain',                            // Text files
-    // 'application/pdf',                    // PDFs (commented out for now)
-    // 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' // Word docs
+    'application/vnd.google-apps.document',      // Google Docs
+    'application/vnd.google-apps.spreadsheet',  // Google Sheets  
+    'application/vnd.google-apps.presentation', // Google Slides
+    'text/plain',                               // Text files
   ];
   
   return supportedTypes.includes(mimeType);

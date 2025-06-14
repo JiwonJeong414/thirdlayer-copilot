@@ -1,20 +1,12 @@
+
+// STEP 2: Fix the OAuth scopes in your auth URL
+
+// src/app/api/auth/google/url/route.ts - UPDATED to include proper Drive scopes
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
-import { randomBytes } from 'crypto';
-import { cookies } from 'next/headers';
 import crypto from 'crypto';
 
-// Ensure the redirect URI is properly set
 const redirectUri = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/api/auth/callback/google';
-
-// Validate required environment variables
-if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
-  console.error('Missing required Google OAuth environment variables:', {
-    hasClientId: !!process.env.GOOGLE_CLIENT_ID,
-    hasClientSecret: !!process.env.GOOGLE_CLIENT_SECRET,
-    redirectUri
-  });
-}
 
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
@@ -24,72 +16,44 @@ const oauth2Client = new google.auth.OAuth2(
 
 export async function GET(request: NextRequest) {
   try {
-    // Log all environment variables (safely)
-    const envCheck = {
-      hasClientId: !!process.env.GOOGLE_CLIENT_ID,
-      hasClientSecret: !!process.env.GOOGLE_CLIENT_SECRET,
-      hasRedirectUri: !!process.env.GOOGLE_REDIRECT_URI,
-      clientIdPrefix: process.env.GOOGLE_CLIENT_ID ? process.env.GOOGLE_CLIENT_ID.substring(0, 10) + '...' : 'missing',
-      redirectUri: process.env.GOOGLE_REDIRECT_URI
-    };
-    
-    console.log('Environment Variables Check:', envCheck);
-
-    // Ensure redirect URI is properly set
-    const redirectUri = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/api/auth/callback/google';
-    if (!redirectUri) {
-      const error = 'OAuth configuration is missing: Redirect URI not set';
-      console.error(error);
-      return NextResponse.json({ error, details: envCheck }, { status: 500 });
-    }
-
-    // Validate required environment variables
     const clientId = process.env.GOOGLE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
 
-    if (!clientId) {
-      const error = 'OAuth configuration is missing: Client ID not set';
-      console.error(error);
-      return NextResponse.json({ error, details: envCheck }, { status: 500 });
+    if (!clientId || !clientSecret) {
+      return NextResponse.json({ 
+        error: 'OAuth configuration missing' 
+      }, { status: 500 });
     }
-
-    if (!clientSecret) {
-      const error = 'OAuth configuration is missing: Client Secret not set';
-      console.error(error);
-      return NextResponse.json({ error, details: envCheck }, { status: 500 });
-    }
-
-    // Log OAuth configuration (safely)
-    console.log('OAuth Configuration:', {
-      clientId: clientId ? `${clientId.substring(0, 5)}...` : 'missing',
-      hasClientSecret: !!clientSecret,
-      redirectUri
-    });
 
     // Generate random state for CSRF protection
     const state = crypto.randomBytes(32).toString('hex');
     
-    // Construct OAuth URL
+    // FIXED: Include comprehensive Drive scopes
+    const scopes = [
+      'openid',
+      'email', 
+      'profile',
+      'https://www.googleapis.com/auth/drive.readonly',  // Can read all files
+      'https://www.googleapis.com/auth/drive.metadata.readonly', // Can read metadata
+      'https://www.googleapis.com/auth/drive.file',      // Can read files created by the app
+      'https://www.googleapis.com/auth/drive', // Add this for delete permissions
+    ];
+    
+    // Construct OAuth URL with ALL necessary scopes
     const params = new URLSearchParams({
       client_id: clientId,
       redirect_uri: redirectUri,
       response_type: 'code',
-      scope: 'openid email profile https://www.googleapis.com/auth/drive.file',
+      scope: scopes.join(' '), // Join all scopes
       access_type: 'offline',
-      prompt: 'consent',
+      prompt: 'consent', // Force consent to get refresh token
       state
     });
 
     const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
     
-    console.log('Generated OAuth URL:', {
-      url: authUrl,
-      state: state.substring(0, 8) + '...',
-      redirectUri,
-      clientIdPrefix: clientId.substring(0, 10) + '...'
-    });
+    console.log('Generated OAuth URL with scopes:', scopes);
 
-    // Create response with OAuth URL
     const response = NextResponse.json({ url: authUrl });
     
     // Store state in cookie for verification
@@ -102,11 +66,10 @@ export async function GET(request: NextRequest) {
 
     return response;
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('Error generating OAuth URL:', error);
     return NextResponse.json({ 
       error: 'Failed to generate OAuth URL',
-      details: errorMessage
+      details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }
-} 
+}

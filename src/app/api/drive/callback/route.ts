@@ -1,100 +1,64 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { exchangeCodeForTokens } from '@/lib/driveAuth';
-import { PrismaClient } from '@/generated/prisma';
+// src/app/api/drive/auth-url/route.ts - Updated to include flow type in state
 
-const prisma = new PrismaClient();
+import { NextRequest, NextResponse } from 'next/server';
+import { google } from 'googleapis';
+import crypto from 'crypto';
+
+const oauth2Client = new google.auth.OAuth2(
+  process.env.GOOGLE_CLIENT_ID,
+  process.env.GOOGLE_CLIENT_SECRET,
+  process.env.GOOGLE_REDIRECT_URI // Same redirect URI for both flows
+);
 
 export async function GET(request: NextRequest) {
   try {
-    const searchParams = request.nextUrl.searchParams;
-    const code = searchParams.get('code');
-    const state = searchParams.get('state');
-    const error = searchParams.get('error');
-
-    console.log('Drive callback received:', {
-      hasCode: !!code,
-      hasState: !!state,
-      error: error,
-      state: state?.substring(0, 8) + '...'
-    });
-
-    // Check for OAuth errors
-    if (error) {
-      console.error('Drive OAuth error:', error);
-      return NextResponse.redirect(new URL('/?error=drive_oauth_error', request.url));
-    }
-
-    if (!code || !state) {
-      console.error('Missing code or state parameter');
-      return NextResponse.redirect(new URL('/?error=missing_params', request.url));
-    }
-
-    // Verify Drive-specific state parameter
-    const storedState = request.cookies.get('drive_oauth_state')?.value;
-    console.log('State verification:', {
-      received: state.substring(0, 8) + '...',
-      stored: storedState?.substring(0, 8) + '...',
-      matches: state === storedState
-    });
-
-    if (!storedState || state !== storedState) {
-      console.error('Invalid Drive state parameter');
-      return NextResponse.redirect(new URL('/?error=invalid_drive_state', request.url));
-    }
-
-    // Get session to identify user
+    // Check if user is authenticated
     const session = request.cookies.get('session');
     if (!session) {
-      console.error('No session found during Drive callback');
-      return NextResponse.redirect(new URL('/?error=no_session', request.url));
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    const { userId } = JSON.parse(session.value);
-    console.log('Processing Drive connection for user:', userId);
+    // Generate state parameter with flow type indicator
+    const baseState = crypto.randomBytes(32).toString('hex');
+    const state = `drive_${baseState}`; // Prefix to indicate this is for Drive auth
+    
+    const scopes = [
+      'https://www.googleapis.com/auth/drive.readonly',
+      'https://www.googleapis.com/auth/drive.metadata.readonly'
+    ];
 
-    // Exchange code for tokens
-    const tokens = await exchangeCodeForTokens(code);
-    console.log('Received tokens:', {
-      hasAccessToken: !!tokens.access_token,
-      hasRefreshToken: !!tokens.refresh_token,
-      expiryDate: tokens.expiry_date
+    const authUrl = oauth2Client.generateAuthUrl({
+      access_type: 'offline',
+      scope: scopes,
+      prompt: 'consent',
+      state: state,
+      include_granted_scopes: true
+    });
+    
+    console.log('Generated Drive OAuth URL:', {
+      url: authUrl.substring(0, 100) + '...',
+      state: state.substring(0, 12) + '...',
+      isDriveFlow: state.startsWith('drive_')
     });
 
-    if (!tokens.access_token) {
-      throw new Error('No access token received from Google');
-    }
-
-    // Store Drive credentials in database
-    await prisma.driveConnection.upsert({
-      where: { userId },
-      update: {
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token || undefined,
-        isConnected: true,
-        connectedAt: new Date(),
-        updatedAt: new Date(),
-      },
-      create: {
-        userId,
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token || undefined,
-        isConnected: true,
-        connectedAt: new Date(),
-        updatedAt: new Date(),
-      },
+    // Create response with OAuth URL
+    const response = NextResponse.json({ url: authUrl });
+    
+    // Store Drive-specific state in cookie
+    response.cookies.set('drive_oauth_state', state, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 10, // 10 minutes
+      path: '/'
     });
 
-    console.log('Drive connection stored successfully');
-
-    // Create success response
-    const response = NextResponse.redirect(new URL('/?drive_connected=true', request.url));
-    
-    // Clear the Drive OAuth state cookie
-    response.cookies.delete('drive_oauth_state');
-    
     return response;
   } catch (error) {
-    console.error('Error in Drive OAuth callback:', error);
-    return NextResponse.redirect(new URL('/?error=drive_auth_failed', request.url));
+    console.error('Error generating Drive OAuth URL:', error);
+    return NextResponse.json({ 
+      error: 'Failed to generate OAuth URL',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }

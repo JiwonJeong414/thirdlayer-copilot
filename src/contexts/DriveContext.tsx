@@ -1,4 +1,4 @@
-// src/contexts/DriveContext.tsx - Updated for session-based auth
+// src/contexts/DriveContext.tsx - FIXED to refresh indexed files after sync
 'use client';
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
@@ -32,6 +32,7 @@ interface DriveContextType {
   searchDocuments: (query: string, limit?: number) => Promise<SearchResult[]>;
   fetchIndexedFiles: () => Promise<void>;
   clearSearch: () => void;
+  refreshIndexedFiles: () => Promise<void>; // Add this method
 }
 
 const DriveContext = createContext<DriveContextType | undefined>(undefined);
@@ -56,26 +57,35 @@ export const DriveProvider = ({ children }: { children: ReactNode }) => {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
-  useEffect(() => {
-    if (user && driveConnection.isConnected) {
-      fetchIndexedFiles();
-    }
-  }, [user, driveConnection.isConnected]);
-
   const fetchIndexedFiles = async () => {
     if (!user || !driveConnection.isConnected) return;
 
     try {
+      console.log('Fetching indexed files...');
       const response = await fetch('/api/drive/files');
 
       if (response.ok) {
         const data = await response.json();
+        console.log(`Fetched ${data.files.length} indexed files`);
         setIndexedFiles(data.files);
+      } else {
+        console.error('Failed to fetch indexed files');
       }
     } catch (error) {
       console.error('Error fetching indexed files:', error);
     }
   };
+
+  const refreshIndexedFiles = async () => {
+    console.log('Refreshing indexed files...');
+    await fetchIndexedFiles();
+  };
+
+  useEffect(() => {
+    if (user && driveConnection.isConnected) {
+      fetchIndexedFiles();
+    }
+  }, [user, driveConnection.isConnected]);
 
   const syncDrive = async () => {
     if (!user || !driveConnection.isConnected || isSync) return;
@@ -96,8 +106,8 @@ export const DriveProvider = ({ children }: { children: ReactNode }) => {
           errorCount: data.errorCount,
         });
         
-        // Refresh indexed files
-        await fetchIndexedFiles();
+        // Refresh indexed files after successful sync
+        await refreshIndexedFiles();
       } else {
         throw new Error('Sync failed');
       }
@@ -155,6 +165,7 @@ export const DriveProvider = ({ children }: { children: ReactNode }) => {
         searchDocuments,
         fetchIndexedFiles,
         clearSearch,
+        refreshIndexedFiles,
       }}
     >
       {children}

@@ -1,0 +1,593 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { 
+  Trash2, 
+  Heart, 
+  FileText, 
+  Image, 
+  Video, 
+  Archive,
+  Zap,
+  ThumbsUp,
+  ThumbsDown,
+  RotateCcw,
+  Sparkles,
+  Brain,
+  CheckCircle,
+  XCircle,
+  AlertTriangle,
+  Clock,
+  Copy,
+  HardDrive
+} from 'lucide-react';
+
+interface CleanableFile {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  modifiedTime: string;
+  webViewLink?: string;
+  thumbnailLink?: string;
+  content?: string;
+  category: 'empty' | 'tiny' | 'small' | 'duplicate' | 'old' | 'low_quality' | 'system';
+  reason: string;
+  confidence: 'low' | 'medium' | 'high';
+  aiSummary?: string;
+  duplicateOf?: string;
+  selected: boolean;
+}
+
+interface SwipeDecision {
+  fileId: string;
+  action: 'keep' | 'delete';
+  timestamp: number;
+}
+
+interface SwipeToCleanUIProps {
+  onBack: () => void;
+}
+
+export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
+  const [files, setFiles] = useState<CleanableFile[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [decisions, setDecisions] = useState<SwipeDecision[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [showBatchSuggestion, setShowBatchSuggestion] = useState(false);
+  const [autoCleanMode, setAutoCleanMode] = useState(false);
+  
+  const cardRef = useRef<HTMLDivElement>(null);
+  const startPosRef = useRef({ x: 0, y: 0 });
+
+  // Mock data for demonstration
+  useEffect(() => {
+    const mockFiles: CleanableFile[] = [
+      {
+        id: '1',
+        name: 'Untitled document (3).docx',
+        mimeType: 'application/vnd.google-apps.document',
+        size: 45,
+        modifiedTime: '2024-01-15T10:30:00Z',
+        category: 'empty',
+        reason: 'Nearly empty document',
+        confidence: 'high',
+        aiSummary: 'This document appears to be completely empty with no meaningful content. It was likely created accidentally and never used.',
+        content: '   \n\n\n   ',
+        selected: false,
+      },
+      {
+        id: '2',
+        name: 'Screenshot 2023-12-01 at 3.45.22 PM.png',
+        mimeType: 'image/png',
+        size: 1024,
+        modifiedTime: '2023-12-01T15:45:22Z',
+        category: 'tiny',
+        reason: 'Very small image file',
+        confidence: 'medium',
+        aiSummary: 'Small screenshot, possibly an error message or partial capture. Quality seems low.',
+        selected: false,
+      },
+      {
+        id: '3',
+        name: 'Resume - John Doe - Copy.pdf',
+        mimeType: 'application/pdf',
+        size: 156000,
+        modifiedTime: '2023-10-15T14:22:00Z',
+        category: 'duplicate',
+        reason: '94.5% similar to "Resume - John Doe.pdf"',
+        confidence: 'high',
+        aiSummary: 'This appears to be a duplicate of an existing resume with only minor formatting differences.',
+        duplicateOf: 'original-resume-id',
+        selected: false,
+      },
+      {
+        id: '4',
+        name: 'Meeting Notes Template.docx',
+        mimeType: 'application/vnd.google-apps.document',
+        size: 2400,
+        modifiedTime: '2023-08-10T09:15:00Z',
+        category: 'small',
+        reason: 'Small document - needs review',
+        confidence: 'low',
+        aiSummary: 'This appears to be a template with placeholder text. Could be useful for future meetings or may be outdated.',
+        selected: false,
+      },
+      {
+        id: '5',
+        name: 'Old Project Backup 2021.zip',
+        mimeType: 'application/zip',
+        size: 45000,
+        modifiedTime: '2021-03-20T16:30:00Z',
+        category: 'old',
+        reason: '3 years old',
+        confidence: 'medium',
+        aiSummary: 'Archive from 2021. Contains old project files that may no longer be relevant. Consider if historical value exists.',
+        selected: false,
+      }
+    ];
+    
+    setFiles(mockFiles);
+  }, []);
+
+  const currentFile = files[currentIndex];
+  const hasMoreFiles = currentIndex < files.length;
+  const progress = files.length > 0 ? ((currentIndex) / files.length) * 100 : 0;
+
+  // Touch/Mouse event handlers
+  const handleStart = (clientX: number, clientY: number) => {
+    setIsDragging(true);
+    startPosRef.current = { x: clientX, y: clientY };
+  };
+
+  const handleMove = (clientX: number, clientY: number) => {
+    if (!isDragging) return;
+    
+    const deltaX = clientX - startPosRef.current.x;
+    const deltaY = clientY - startPosRef.current.y;
+    setDragOffset({ x: deltaX, y: deltaY });
+  };
+
+  const handleEnd = () => {
+    if (!isDragging) return;
+    
+    const threshold = 100;
+    const { x } = dragOffset;
+    
+    if (Math.abs(x) > threshold) {
+      const action = x > 0 ? 'keep' : 'delete';
+      makeDecision(action);
+    }
+    
+    setIsDragging(false);
+    setDragOffset({ x: 0, y: 0 });
+  };
+
+  // Mouse events
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    handleStart(e.clientX, e.clientY);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    handleMove(e.clientX, e.clientY);
+  };
+
+  const handleMouseUp = () => {
+    handleEnd();
+  };
+
+  // Touch events
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    handleStart(touch.clientX, touch.clientY);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    handleMove(touch.clientX, touch.clientY);
+  };
+
+  const handleTouchEnd = () => {
+    handleEnd();
+  };
+
+  const makeDecision = (action: 'keep' | 'delete') => {
+    if (!currentFile) return;
+    
+    const decision: SwipeDecision = {
+      fileId: currentFile.id,
+      action,
+      timestamp: Date.now()
+    };
+    
+    setDecisions(prev => [...prev, decision]);
+    setCurrentIndex(prev => prev + 1);
+    
+    // Auto-advance in auto-clean mode
+    if (autoCleanMode && currentIndex + 1 < files.length) {
+      setTimeout(() => {
+        const nextFile = files[currentIndex + 1];
+        if (nextFile.confidence === 'high' && ['empty', 'system', 'duplicate'].includes(nextFile.category)) {
+          makeDecision('delete');
+        }
+      }, 500);
+    }
+  };
+
+  const undoLastDecision = () => {
+    if (decisions.length === 0) return;
+    
+    setDecisions(prev => prev.slice(0, -1));
+    setCurrentIndex(prev => Math.max(0, prev - 1));
+  };
+
+  const getSwipeHint = () => {
+    const { x } = dragOffset;
+    if (Math.abs(x) < 50) return null;
+    
+    return x > 0 ? 'KEEP' : 'DELETE';
+  };
+
+  const getConfidenceColor = (confidence: string) => {
+    switch (confidence) {
+      case 'high': return 'text-green-400 bg-green-900/30';
+      case 'medium': return 'text-yellow-400 bg-yellow-900/30';
+      case 'low': return 'text-red-400 bg-red-900/30';
+      default: return 'text-gray-400 bg-gray-900/30';
+    }
+  };
+
+  const getCategoryIcon = (category: string) => {
+    switch (category) {
+      case 'empty': return <XCircle className="w-4 h-4 text-red-400" />;
+      case 'system': return <HardDrive className="w-4 h-4 text-gray-400" />;
+      case 'duplicate': return <Copy className="w-4 h-4 text-purple-400" />;
+      case 'old': return <Clock className="w-4 h-4 text-orange-400" />;
+      case 'low_quality': return <AlertTriangle className="w-4 h-4 text-yellow-400" />;
+      default: return <FileText className="w-4 h-4 text-blue-400" />;
+    }
+  };
+
+  const getFileIcon = (mimeType: string) => {
+    if (mimeType.startsWith('image/')) return <Image className="w-8 h-8 text-purple-400" />;
+    if (mimeType.startsWith('video/')) return <Video className="w-8 h-8 text-red-400" />;
+    if (mimeType.includes('zip') || mimeType.includes('archive')) return <Archive className="w-8 h-8 text-orange-400" />;
+    return <FileText className="w-8 h-8 text-blue-400" />;
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const getFileAge = (modifiedTime: string): string => {
+    const age = Date.now() - new Date(modifiedTime).getTime();
+    const days = Math.floor(age / (24 * 60 * 60 * 1000));
+    
+    if (days < 1) return 'Today';
+    if (days < 7) return `${days} days ago`;
+    if (days < 30) return `${Math.floor(days / 7)} weeks ago`;
+    if (days < 365) return `${Math.floor(days / 30)} months ago`;
+    return `${Math.floor(days / 365)} years ago`;
+  };
+
+  const startScan = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/drive/cleaner/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          maxFiles: 50,
+          includeContent: true,
+          enableAI: true 
+        }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setFiles(data.files);
+        setCurrentIndex(0);
+        setDecisions([]);
+      }
+    } catch (error) {
+      console.error('Failed to scan files:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const processDecisions = async () => {
+    const filesToDelete = decisions
+      .filter(d => d.action === 'delete')
+      .map(d => d.fileId);
+    
+    if (filesToDelete.length === 0) {
+      alert('No files selected for deletion.');
+      return;
+    }
+
+    const confirmed = confirm(`Delete ${filesToDelete.length} files? This cannot be undone.`);
+    if (!confirmed) return;
+
+    try {
+      const response = await fetch('/api/drive/cleaner/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileIds: filesToDelete }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        alert(`Successfully deleted ${data.deletedCount} files!`);
+        // Reset for new scan
+        setFiles([]);
+        setCurrentIndex(0);
+        setDecisions([]);
+      }
+    } catch (error) {
+      console.error('Failed to delete files:', error);
+      alert('Failed to delete some files. Please try again.');
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white overflow-hidden">
+      <div className="max-w-md mx-auto p-6">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center space-x-3 mb-4">
+            <div className="p-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl">
+              <Sparkles className="w-8 h-8 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                Swipe to Clean
+              </h1>
+              <p className="text-gray-400 text-sm">AI-powered file cleanup</p>
+            </div>
+          </div>
+
+          {/* Progress Bar */}
+          <div className="w-full bg-gray-800 rounded-full h-2 mb-4">
+            <div 
+              className="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          
+          <div className="flex justify-between text-sm text-gray-400">
+            <span>{currentIndex} of {files.length}</span>
+            <span>{decisions.filter(d => d.action === 'delete').length} to delete</span>
+          </div>
+        </div>
+
+        {/* Control Buttons */}
+        <div className="flex justify-center space-x-3 mb-6">
+          <button
+            onClick={startScan}
+            disabled={isLoading}
+            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 rounded-lg transition-colors"
+          >
+            {isLoading ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                <span>Scanning...</span>
+              </>
+            ) : (
+              <>
+                <Brain className="w-4 h-4" />
+                <span>AI Scan</span>
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={() => setAutoCleanMode(!autoCleanMode)}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
+              autoCleanMode 
+                ? 'bg-green-600 hover:bg-green-700' 
+                : 'bg-gray-600 hover:bg-gray-700'
+            }`}
+          >
+            <Zap className="w-4 h-4" />
+            <span>{autoCleanMode ? 'Auto ON' : 'Manual'}</span>
+          </button>
+        </div>
+
+        {/* Main Card Area */}
+        <div className="relative h-96 mb-6">
+          {!hasMoreFiles ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-green-600/20 rounded-full mx-auto mb-4 flex items-center justify-center">
+                  <CheckCircle className="w-8 h-8 text-green-400" />
+                </div>
+                <h3 className="text-xl font-medium text-white mb-2">All Done!</h3>
+                <p className="text-gray-400 mb-4">
+                  {decisions.length === 0 
+                    ? 'Start by scanning your Drive for files to clean.'
+                    : `Reviewed ${decisions.length} files. Ready to process?`
+                  }
+                </p>
+                {decisions.length > 0 && (
+                  <button
+                    onClick={processDecisions}
+                    className="px-6 py-3 bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+                  >
+                    Delete {decisions.filter(d => d.action === 'delete').length} Files
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div
+              ref={cardRef}
+              className="absolute inset-0 cursor-grab active:cursor-grabbing"
+              style={{
+                transform: `translate(${dragOffset.x}px, ${dragOffset.y}px) rotate(${dragOffset.x * 0.1}deg)`,
+                transition: isDragging ? 'none' : 'transform 0.3s ease-out',
+              }}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+            >
+              {/* Swipe Hint Overlay */}
+              {getSwipeHint() && (
+                <div className={`absolute inset-0 flex items-center justify-center z-10 rounded-xl border-4 ${
+                  getSwipeHint() === 'KEEP' 
+                    ? 'bg-green-500/20 border-green-500' 
+                    : 'bg-red-500/20 border-red-500'
+                }`}>
+                  <div className="text-4xl font-bold">
+                    {getSwipeHint() === 'KEEP' ? '💚 KEEP' : '🗑️ DELETE'}
+                  </div>
+                </div>
+              )}
+
+              {/* File Card */}
+              <div className="bg-gray-800/90 backdrop-blur-sm border border-gray-700 rounded-xl p-6 h-full flex flex-col">
+                {/* File Header */}
+                <div className="flex items-start space-x-4 mb-4">
+                  <div className="flex-shrink-0">
+                    {getFileIcon(currentFile.mimeType)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-lg font-medium text-white truncate mb-1">
+                      {currentFile.name}
+                    </h3>
+                    <div className="flex items-center space-x-2 text-sm text-gray-400">
+                      <span>{formatFileSize(currentFile.size)}</span>
+                      <span>•</span>
+                      <span>{getFileAge(currentFile.modifiedTime)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Category & Confidence */}
+                <div className="flex items-center space-x-2 mb-4">
+                  <div className="flex items-center space-x-1 px-2 py-1 bg-gray-700 rounded-lg">
+                    {getCategoryIcon(currentFile.category)}
+                    <span className="text-sm capitalize">{currentFile.category.replace('_', ' ')}</span>
+                  </div>
+                  <div className={`px-2 py-1 rounded-lg text-xs ${getConfidenceColor(currentFile.confidence)}`}>
+                    {currentFile.confidence} confidence
+                  </div>
+                </div>
+
+                {/* AI Analysis */}
+                {currentFile.aiSummary && (
+                  <div className="bg-purple-900/30 border border-purple-700 rounded-lg p-3 mb-4">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <Brain className="w-4 h-4 text-purple-400" />
+                      <span className="text-sm font-medium text-purple-300">AI Analysis</span>
+                    </div>
+                    <p className="text-sm text-gray-300">{currentFile.aiSummary}</p>
+                  </div>
+                )}
+
+                {/* Reason */}
+                <div className="bg-gray-700/50 rounded-lg p-3 mb-4">
+                  <p className="text-sm text-gray-300">
+                    <span className="text-orange-400 font-medium">Reason: </span>
+                    {currentFile.reason}
+                  </p>
+                </div>
+
+                {/* Duplicate Info */}
+                {currentFile.duplicateOf && (
+                  <div className="bg-yellow-900/30 border border-yellow-700 rounded-lg p-3 mb-4">
+                    <div className="flex items-center space-x-2">
+                      <Copy className="w-4 h-4 text-yellow-400" />
+                      <span className="text-sm text-yellow-300">Potential duplicate detected</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* File Preview */}
+                {currentFile.content && (
+                  <div className="bg-gray-900/50 rounded-lg p-3 flex-1 overflow-hidden">
+                    <p className="text-xs text-gray-400 mb-2">Content Preview:</p>
+                    <p className="text-sm text-gray-300 overflow-hidden">
+                      {currentFile.content.substring(0, 200)}
+                      {currentFile.content.length > 200 && '...'}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Action Buttons */}
+        {hasMoreFiles && (
+          <div className="flex justify-center space-x-6 mb-6">
+            <button
+              onClick={() => makeDecision('delete')}
+              className="flex items-center justify-center w-16 h-16 bg-red-600 hover:bg-red-700 rounded-full transition-colors shadow-lg"
+            >
+              <ThumbsDown className="w-8 h-8 text-white" />
+            </button>
+            
+            <button
+              onClick={undoLastDecision}
+              disabled={decisions.length === 0}
+              className="flex items-center justify-center w-12 h-12 bg-gray-600 hover:bg-gray-700 disabled:bg-gray-800 disabled:opacity-50 rounded-full transition-colors"
+            >
+              <RotateCcw className="w-6 h-6 text-white" />
+            </button>
+            
+            <button
+              onClick={() => makeDecision('keep')}
+              className="flex items-center justify-center w-16 h-16 bg-green-600 hover:bg-green-700 rounded-full transition-colors shadow-lg"
+            >
+              <ThumbsUp className="w-8 h-8 text-white" />
+            </button>
+          </div>
+        )}
+
+        {/* Instructions */}
+        <div className="text-center text-sm text-gray-400">
+          <p className="mb-2">
+            <span className="text-green-400">Swipe right</span> or 👍 to keep • 
+            <span className="text-red-400"> Swipe left</span> or 👎 to delete
+          </p>
+          <p>AI analyzes content, finds duplicates, and suggests cleanup</p>
+        </div>
+
+        {/* Stats Footer */}
+        {decisions.length > 0 && (
+          <div className="mt-6 p-4 bg-gray-800/50 rounded-lg">
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <p className="text-2xl font-bold text-green-400">
+                  {decisions.filter(d => d.action === 'keep').length}
+                </p>
+                <p className="text-xs text-gray-400">Keep</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-red-400">
+                  {decisions.filter(d => d.action === 'delete').length}
+                </p>
+                <p className="text-xs text-gray-400">Delete</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-purple-400">
+                  {Math.round((decisions.filter(d => d.action === 'delete').length / decisions.length) * 100) || 0}%
+                </p>
+                <p className="text-xs text-gray-400">Cleanup</p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
