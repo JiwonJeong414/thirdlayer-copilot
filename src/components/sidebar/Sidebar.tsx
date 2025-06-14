@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import Link from 'next/link';
 import {
   Plus,
   Cloud,
@@ -18,7 +19,8 @@ import {
   CheckCircle,
   Loader2,
   X,
-  Zap
+  Zap,
+  Sparkles
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useChat } from '@/contexts/ChatContext';
@@ -41,6 +43,8 @@ export default function Sidebar() {
   const [syncMode, setSyncMode] = useState('new'); // 'new' or 'force'
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncResults, setSyncResults] = useState<SyncResults | null>(null);
+  const [showDriveCleaner, setShowDriveCleaner] = useState(false);
+
 
   const { user, signOut, driveConnection } = useAuth();
   const { indexedFiles, refreshIndexedFiles } = useDrive();
@@ -229,6 +233,18 @@ export default function Sidebar() {
               )}
             </div>
           </div>
+
+          {driveConnection.isConnected && (
+            <button
+              onClick={() => setShowDriveCleaner(true)}
+              className="flex items-center space-x-1 px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs transition-colors"
+            >
+              <Link href="/cleaner" className="...">
+                <Sparkles className="w-4 h-4" />
+                  Drive Cleaner
+              </Link>
+            </button>
+          )}
 
           {/* Drive Status */}
           {driveConnection.isConnected ? (

@@ -36,6 +36,7 @@ export async function GET(request: NextRequest) {
       'https://www.googleapis.com/auth/drive.readonly',  // Can read all files
       'https://www.googleapis.com/auth/drive.metadata.readonly', // Can read metadata
       'https://www.googleapis.com/auth/drive.file',      // Can read files created by the app
+      'https://www.googleapis.com/auth/drive', // Add this for delete permissions
     ];
     
     // Construct OAuth URL with ALL necessary scopes
