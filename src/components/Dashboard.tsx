@@ -115,7 +115,7 @@ const Dashboard = () => {
       gradient: 'from-blue-500 via-blue-600 to-cyan-600',
       darkBgGradient: 'from-blue-900/20 to-cyan-900/20',
       borderColor: 'border-blue-200 hover:border-blue-300 dark:border-blue-800 dark:hover:border-blue-700',
-      href: '/?chat=true',
+      href: '/chat',
       stats: {
         primary: driveConnection.isConnected ? indexedFiles.length : 0,
         primaryLabel: 'Documents Ready',
@@ -161,8 +161,8 @@ const Dashboard = () => {
 
   // Quick actions with updated links
   const quickActions = [
-    { icon: Plus, label: 'New Chat', action: () => router.push('/?chat=true') },
-    { icon: Search, label: 'Search Files', action: () => router.push('/?search=true') },
+    { icon: Plus, label: 'New Chat', action: () => router.push('/chat') },
+    { icon: Search, label: 'Search Files', action: () => router.push('/chat') },
     { icon: Sparkles, label: 'AI Cleanup', action: () => router.push('/cleanup') },
     { icon: Brain, label: 'AI Organize', action: () => router.push('/organize') },
     { icon: RefreshCw, label: 'Sync Drive', action: () => setShowSyncModal(true) },

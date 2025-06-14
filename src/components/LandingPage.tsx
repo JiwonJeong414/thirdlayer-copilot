@@ -41,7 +41,7 @@ const LandingPage = () => {
       bgColor: 'bg-blue-500/10',
       borderColor: 'border-blue-500/20',
       stats: ['Smart document search', 'Natural language queries', 'Context-aware responses'],
-      href: '/?chat=true', // Goes to main chat
+      href: '/chat', // Updated to use the new chat route
     },
     {
       id: 'cleanup',
