@@ -207,7 +207,7 @@ export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void
                         value={method.value}
                         checked={selectedMethod === method.value}
                         onChange={(e) => setSelectedMethod(e.target.value as any)}
-                        className="text-purple-500 bg-gray-700 border-gray-600"
+                        className="text-green-500 bg-gray-700 border-gray-600"
                       />
                       <div>
                         <div className="text-white font-medium">{method.label}</div>
@@ -232,7 +232,7 @@ export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void
                       max="12"
                       value={maxClusters}
                       onChange={(e) => setMaxClusters(parseInt(e.target.value))}
-                      className="w-full accent-purple-500"
+                      className="w-full accent-green-500"
                     />
                   </div>
                   <div>
@@ -243,7 +243,7 @@ export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void
                       max="8"
                       value={minClusterSize}
                       onChange={(e) => setMinClusterSize(parseInt(e.target.value))}
-                      className="w-full accent-purple-500"
+                      className="w-full accent-green-500"
                     />
                   </div>
                 </div>
@@ -260,7 +260,7 @@ export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void
                       type="checkbox"
                       checked={createFolders}
                       onChange={(e) => setCreateFolders(e.target.checked)}
-                      className="text-purple-500 bg-gray-700 border-gray-600"
+                      className="text-green-500 bg-gray-700 border-gray-600"
                     />
                     <span className="text-sm text-gray-300">Create folders automatically</span>
                   </label>
@@ -279,8 +279,7 @@ export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void
               <button
                 onClick={runAnalysis}
                 disabled={isAnalyzing}
-                className="flex items-center space-x-3 px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-gray-600 disabled:to-gray-700 rounded-xl text-white font-medium transition-all transform hover:scale-105 disabled:scale-100"
-              >
+                className="flex items-center space-x-3 px-8 py-4 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:from-gray-600 disabled:to-gray-700 rounded-xl text-white font-medium transition-all transform hover:scale-105 disabled:scale-100"              >
                 {isAnalyzing ? (
                   <>
                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
@@ -324,7 +323,7 @@ export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void
               
               <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl p-4">
                 <div className="flex items-center space-x-3">
-                  <Clock className="w-6 h-6 text-purple-400" />
+                  <Clock className="w-6 h-6 text-green-400" />
                   <div>
                     <p className="text-sm text-gray-400">Est. Time Saved</p>
                     <p className="text-2xl font-bold text-white">{suggestion.summary.estimatedSavings}h</p>
@@ -395,7 +394,7 @@ export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void
                   key={cluster.id}
                   className={`bg-gray-800/50 backdrop-blur-sm border rounded-xl p-6 transition-all cursor-pointer ${
                     selectedClusters.has(cluster.id)
-                      ? 'border-purple-500 ring-2 ring-purple-500/50'
+                      ? 'border-green-500 ring-2 ring-green-500/50'
                       : 'border-gray-700 hover:border-gray-600'
                   }`}
                   onClick={() => toggleCluster(cluster.id)}
@@ -419,7 +418,7 @@ export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void
                       type="checkbox"
                       checked={selectedClusters.has(cluster.id)}
                       onChange={() => toggleCluster(cluster.id)}
-                      className="text-purple-500 bg-gray-700 border-gray-600"
+                      className="text-green-500 bg-gray-700 border-gray-600"
                       onClick={(e) => e.stopPropagation()}
                     />
                   </div>
@@ -501,7 +500,7 @@ export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void
               <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
                 <div className="bg-gray-800 rounded-xl p-8 max-w-md w-full mx-4">
                   <div className="text-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4" />
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4" />
                     <h3 className="text-lg font-bold text-white mb-2">Organizing Your Drive</h3>
                     <p className="text-gray-400">
                       Creating folders and moving files. This may take a few moments...
@@ -516,13 +515,13 @@ export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void
         {/* Info Panel */}
         <div className="bg-gray-800/30 backdrop-blur-sm border border-gray-700 rounded-xl p-6 mt-8">
           <h3 className="text-lg font-medium text-white mb-3 flex items-center space-x-2">
-            <Sparkles className="w-5 h-5 text-purple-400" />
+            <Sparkles className="w-5 h-5 text-green-400" />
             <span>How It Works</span>
           </h3>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
             <div className="flex items-start space-x-3">
-              <div className="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center text-white font-bold">1</div>
+              <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center text-white font-bold">1</div>
               <div>
                 <h4 className="font-medium text-white mb-1">AI Analysis</h4>
                 <p className="text-gray-400">
@@ -532,7 +531,7 @@ export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void
             </div>
             
             <div className="flex items-start space-x-3">
-              <div className="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center text-white font-bold">2</div>
+              <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center text-white font-bold">2</div>
               <div>
                 <h4 className="font-medium text-white mb-1">Smart Grouping</h4>
                 <p className="text-gray-400">
@@ -542,7 +541,7 @@ export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void
             </div>
             
             <div className="flex items-start space-x-3">
-              <div className="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center text-white font-bold">3</div>
+              <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center text-white font-bold">3</div>
               <div>
                 <h4 className="font-medium text-white mb-1">Auto Organization</h4>
                 <p className="text-gray-400">

@@ -1,4 +1,4 @@
-// src/components/drive/cleaner/SwipeToCleanUI.tsx - Enhanced pink theme version
+// src/components/drive/cleaner/SwipeToCleanUI.tsx - Fixed structure
 'use client';
 
 import React, { useState, useRef } from 'react';
@@ -318,7 +318,9 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8 }}
         >
-          <div className="flex items-center justify-between mb-6">
+          {/* Header with better spacing */}
+          <div className="flex items-center justify-between mb-8 px-2">
+            {/* Back Button - Left side with more space */}
             <motion.button
               onClick={onBack}
               className="flex items-center space-x-2 text-pink-300 hover:text-white transition-colors p-3 rounded-xl hover:bg-pink-800/30 backdrop-blur-sm"
@@ -329,33 +331,34 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
               <span className="font-medium">Back</span>
             </motion.button>
             
-            <div className="flex-1 flex justify-center">
-              <div className="flex items-center space-x-4">
-                <motion.div 
-                  className="p-3 bg-gradient-to-r from-pink-500 to-purple-500 rounded-xl shadow-lg"
-                  whileHover={{ scale: 1.1, rotate: 5 }}
-                  transition={{ duration: 0.3 }}
-                >
-                  <Sparkles className="w-8 h-8 text-white" />
-                </motion.div>
-                <div className="text-left">
-                  <h1 className="text-2xl font-bold bg-gradient-to-r from-pink-400 to-purple-400 bg-clip-text text-transparent">
-                    Swipe to Clean
-                  </h1>
-                  <p className="text-pink-300 text-sm">AI-powered file cleanup</p>
-                </div>
+            {/* Center Title Section - More compact and aligned */}
+            <div className="flex items-center space-x-3">
+              <motion.div 
+                className="p-3 bg-gradient-to-r from-pink-500 to-purple-500 rounded-xl shadow-lg"
+                whileHover={{ scale: 1.1, rotate: 5 }}
+                transition={{ duration: 0.3 }}
+              >
+                <Sparkles className="w-6 h-6 text-white" />
+              </motion.div>
+              <div className="text-left">
+                <h1 className="text-xl font-bold bg-gradient-to-r from-pink-400 to-purple-400 bg-clip-text text-transparent whitespace-nowrap">
+                  Swipe to Clean
+                </h1>
+                <p className="text-pink-300 text-xs whitespace-nowrap">AI-powered file cleanup</p>
               </div>
             </div>
             
-            <div className="w-20" /> {/* Spacer for balance */}
+            {/* Right spacer to balance layout */}
+            <div className="w-20" />
           </div>
 
-          {/* Progress Bar */}
+          {/* Progress Bar - More space from header */}
           {files.length > 0 && (
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5 }}
+              className="mt-6"
             >
               <div className="w-full bg-gray-800/50 rounded-full h-3 mb-4 backdrop-blur-sm border border-pink-500/20">
                 <motion.div 
@@ -374,9 +377,9 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
           )}
         </motion.div>
 
-        {/* Control Buttons */}
+        {/* Control Buttons - More space from header */}
         <motion.div 
-          className="flex justify-center space-x-3 mb-6"
+          className="flex justify-center space-x-4 mb-8"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, duration: 0.8 }}

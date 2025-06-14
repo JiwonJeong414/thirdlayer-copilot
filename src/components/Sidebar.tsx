@@ -23,7 +23,8 @@ import {
   Zap,
   Sparkles,
   ToggleLeft,
-  ToggleRight
+  ToggleRight,
+  ArrowLeft
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useChat } from '@/contexts/ChatContext';
@@ -74,6 +75,9 @@ export default function Sidebar() {
       <div className="p-4 border-b border-gray-700 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-2">
+            <Link href="/" className="p-1 hover:bg-gray-700 rounded text-gray-400 hover:text-white transition-colors">
+              <ArrowLeft className="w-4 h-4" />
+            </Link>
             <div className="w-6 h-6 bg-gradient-to-r from-blue-500 via-purple-500 to-green-500 rounded flex items-center justify-center">
               <span className="text-white font-bold text-xs">TL</span>
             </div>
