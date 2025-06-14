@@ -21,10 +21,6 @@ const nextConfig = {
     }
     return config;
   },
-  // Mark Firebase Admin as an external package
-  experimental: {
-    serverComponentsExternalPackages: ['firebase-admin'],
-  },
 };
 
 module.exports = nextConfig; 
