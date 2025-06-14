@@ -1,8 +1,8 @@
-// TODO: Fix 'use client' directives - only put where needed (needed at top of pages, not components)
+// src/app/page.tsx - Updated to show landing page for non-authenticated users
 'use client';
 
 import { useAuth } from '@/contexts/AuthContext';
-import LoginPage from '@/components/LoginPage';
+import LandingPage from '@/components/LandingPage';
 import MainPage from '@/components/MainPage';
 import Spinner from '@/components/Spinner';
 import Protected from '@/components/Protected';
@@ -12,8 +12,8 @@ export default function Home() {
 
   if (loading) {
     return (
-      <div className="flex h-screen w-screen justify-center align-middle">
-        <Spinner width="5" height="5" />
+      <div className="flex h-screen w-screen justify-center items-center bg-gray-900">
+        <Spinner width="8" height="8" />
       </div>
     );
   }
@@ -25,7 +25,7 @@ export default function Home() {
           <MainPage />
         </Protected>
       ) : (
-        <LoginPage />
+        <LandingPage />
       )}
     </>
   );
