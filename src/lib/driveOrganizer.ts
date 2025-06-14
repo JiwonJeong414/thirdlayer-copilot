@@ -437,8 +437,16 @@ DESCRIPTION: [brief description]`;
         for (const file of cluster.files) {
           if (file.confidence > 0.7) { // Only move high-confidence files
             try {
+              // First get the current file metadata to check parents
+              const fileMetadata = await drive.files.get({
+                fileId: file.fileId,
+                fields: 'parents'
+              });
+
+              // Remove old parents and add new parent
               await drive.files.update({
                 fileId: file.fileId,
+                removeParents: fileMetadata.data.parents?.join(','),
                 addParents: folderId,
                 fields: 'id, parents',
               });

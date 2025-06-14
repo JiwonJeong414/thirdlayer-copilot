@@ -6,12 +6,13 @@ import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import Protected from '@/components/layout/Protected';
 import Spinner from '@/components/ui/Spinner';
-import DriveCleanerDashboard from '@/components/drive/DriveCleanerDashboard';
-import SwipeToCleanUI from '@/components/drive/SwipeToCleanUI';
-import BatchCleanerUI from '@/components/drive/BatchCleanerUI';
-import CleanerAnalytics from '@/components/drive/CleanerAnalytics';
-// Import the new organization dashboard
-import DriveOrganizerDashboard from '@/components/drive/DriveOrganizerDashboard';
+import { 
+  DriveCleanerDashboard,
+  SwipeToCleanUI,
+  BatchCleanerUI,
+  CleanerAnalytics,
+  DriveOrganizerDashboard
+} from '@/components/drive';
 import { 
   Sparkles, 
   Zap, 
