@@ -1,7 +1,8 @@
-// src/app/cleaner/page.tsx
+// src/app/cleaner/page.tsx - UPDATED with Organization Support
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import Protected from '@/components/layout/Protected';
 import Spinner from '@/components/ui/Spinner';
@@ -9,19 +10,42 @@ import DriveCleanerDashboard from '@/components/drive/DriveCleanerDashboard';
 import SwipeToCleanUI from '@/components/drive/SwipeToCleanUI';
 import BatchCleanerUI from '@/components/drive/BatchCleanerUI';
 import CleanerAnalytics from '@/components/drive/CleanerAnalytics';
+// Import the new organization dashboard
+import DriveOrganizerDashboard from '@/components/drive/DriveOrganizerDashboard';
 import { 
   Sparkles, 
   Zap, 
   Heart, 
   BarChart3, 
-  ArrowLeft 
+  ArrowLeft,
+  Brain
 } from 'lucide-react';
 
-type CleanerMode = 'dashboard' | 'swipe' | 'batch' | 'analytics';
+type CleanerMode = 'dashboard' | 'swipe' | 'batch' | 'analytics' | 'organize';
 
 export default function CleanerPage() {
   const { user, loading, driveConnection } = useAuth();
-  const [mode, setMode] = useState<CleanerMode>('dashboard');
+  const searchParams = useSearchParams();
+  
+  // Check URL parameters for mode
+  const urlMode = searchParams.get('mode');
+  const [mode, setMode] = useState<CleanerMode>(() => {
+    // Set initial mode based on URL parameter
+    if (urlMode === 'batch') return 'batch';
+    if (urlMode === 'swipe') return 'swipe';
+    if (urlMode === 'analytics') return 'analytics';
+    if (urlMode === 'organize') return 'organize';
+    return 'dashboard';
+  });
+
+  // Update mode when URL changes
+  useEffect(() => {
+    if (urlMode === 'batch') setMode('batch');
+    else if (urlMode === 'swipe') setMode('swipe');
+    else if (urlMode === 'analytics') setMode('analytics');
+    else if (urlMode === 'organize') setMode('organize');
+    else if (!urlMode) setMode('dashboard');
+  }, [urlMode]);
 
   if (loading) {
     return (
@@ -69,6 +93,8 @@ export default function CleanerPage() {
         return <BatchCleanerUI onBack={() => setMode('dashboard')} />;
       case 'analytics':
         return <CleanerAnalytics onBack={() => setMode('dashboard')} />;
+      case 'organize':
+        return <DriveOrganizerDashboard onBack={() => setMode('dashboard')} />;
       default:
         return <DriveCleanerDashboard onModeChange={setMode} />;
     }

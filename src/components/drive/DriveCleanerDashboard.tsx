@@ -37,7 +37,7 @@ interface CleanerStats {
 }
 
 interface DriveCleanerDashboardProps {
-  onModeChange: (mode: 'swipe' | 'batch' | 'analytics') => void;
+  onModeChange: (mode: 'swipe' | 'batch' | 'analytics' | 'organize') => void;
 }
 
 export default function DriveCleanerDashboard({ onModeChange }: DriveCleanerDashboardProps) {
@@ -164,6 +164,29 @@ export default function DriveCleanerDashboard({ onModeChange }: DriveCleanerDash
             <div className="flex items-center space-x-2 text-sm text-purple-300">
               <Brain className="w-4 h-4" />
               <span>AI-powered • Fun & intuitive</span>
+            </div>
+          </div>
+          
+          {/* Organization Mode */}
+          <div 
+            onClick={() => onModeChange('organize')}
+            className="bg-gradient-to-br from-indigo-600/20 to-purple-600/20 border border-indigo-500/30 rounded-xl p-6 cursor-pointer hover:border-indigo-500/50 transition-all group"
+          >
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="p-3 bg-indigo-600 rounded-lg group-hover:scale-110 transition-transform">
+                <Brain className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-white">AI Organization</h3>
+                <p className="text-indigo-300">Smart folder management</p>
+              </div>
+            </div>
+            <p className="text-gray-400 mb-4">
+              Use K-means clustering and AI analysis to automatically organize your files into logical folders.
+            </p>
+            <div className="flex items-center space-x-2 text-sm text-indigo-300">
+              <Brain className="w-4 h-4" />
+              <span>ML clustering • Content-based • Auto-folders</span>
             </div>
           </div>
 

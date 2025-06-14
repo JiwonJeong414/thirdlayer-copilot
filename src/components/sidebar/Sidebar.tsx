@@ -1,3 +1,4 @@
+// src/components/sidebar/Sidebar.tsx - FIXED VERSION
 import React, { useState } from "react";
 import Link from "next/link";
 import {
@@ -43,7 +44,6 @@ export default function Sidebar() {
   const [syncMode, setSyncMode] = useState("new"); // 'new' or 'force'
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncResults, setSyncResults] = useState<SyncResults | null>(null);
-  const [showDriveCleaner, setShowDriveCleaner] = useState(false);
 
   const { user, signOut, driveConnection } = useAuth();
   const { indexedFiles, refreshIndexedFiles } = useDrive();
@@ -239,18 +239,6 @@ export default function Sidebar() {
             </div>
           </div>
 
-          {driveConnection.isConnected && (
-            <button
-              onClick={() => setShowDriveCleaner(true)}
-              className="flex items-center space-x-1 px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs transition-colors"
-            >
-              <Link href="/cleaner" className="...">
-                <Sparkles className="w-4 h-4" />
-                Drive Cleaner
-              </Link>
-            </button>
-          )}
-
           {/* Drive Status */}
           {driveConnection.isConnected ? (
             <div className="mt-2">
@@ -259,25 +247,25 @@ export default function Sidebar() {
                 <span>{indexedFiles.length}</span>
               </div>
 
-              {/* Add Drive Cleaner buttons */}
+              {/* FIXED: Drive Cleaner buttons with proper navigation */}
               <div className="flex items-center space-x-2 mt-2">
-                <button
-                  onClick={() => (window.location.href = "/cleaner")}
+                <Link
+                  href="/cleaner"
                   className="flex items-center space-x-1 px-2 py-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded text-xs transition-colors"
                   title="AI-powered file cleanup"
                 >
                   <Sparkles className="w-3 h-3" />
                   <span>AI Clean</span>
-                </button>
+                </Link>
 
-                <button
-                  onClick={() => (window.location.href = "/cleaner?mode=batch")}
+                <Link
+                  href="/cleaner?mode=batch"
                   className="flex items-center space-x-1 px-2 py-1 bg-orange-600 hover:bg-orange-700 text-white rounded text-xs transition-colors"
                   title="Quick cleanup suggestions"
                 >
                   <Zap className="w-3 h-3" />
                   <span>Quick</span>
-                </button>
+                </Link>
               </div>
             </div>
           ) : (

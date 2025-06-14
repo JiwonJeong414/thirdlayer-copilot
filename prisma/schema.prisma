@@ -1,4 +1,4 @@
-// prisma/schema.prisma - FIXED VERSION
+// prisma/schema.prisma - UPDATED with Organization Features
 generator client {
   provider = "prisma-client-js"
   output   = "../src/generated/prisma"
@@ -18,12 +18,19 @@ model User {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  // Relations
+  // Existing Relations
   chats               Chat[]
   driveConnection     DriveConnection?
   documents           Document[]
   documentEmbeddings  DocumentEmbedding[]
   cleanupActivities   CleanupActivity[]
+
+  // NEW: Organization Relations
+  organizationActivities     OrganizationActivity[]
+  fileTags                   FileTag[]
+  clusteringCaches          ClusteringCache[]
+  organizationPreferences   OrganizationPreferences?
+  fileOrganizationStatuses  FileOrganizationStatus[]
 
   @@map("users")
 }
@@ -88,11 +95,19 @@ model DocumentEmbedding {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  // NEW: Clustering fields
+  clusterId          String?   @map("cluster_id") @db.VarChar(100)
+  clusterConfidence  Float?    @map("cluster_confidence")
+  organizationTags   String[]  @map("organization_tags") @default([])
+  lastClusteredAt    DateTime? @map("last_clustered_at")
+
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // FIXED: Include userId in the unique constraint
   @@unique([fileId, chunkIndex, userId], name: "fileId_chunkIndex_userId")
+  @@index([clusterId], map: "idx_embeddings_cluster")
+  @@index([userId, clusterId], map: "idx_embeddings_user_cluster")
   @@map("document_embeddings")
 }
 
@@ -124,4 +139,99 @@ model CleanupActivity {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   @@map("cleanup_activities")
+}
+
+// NEW MODELS FOR ORGANIZATION FEATURES
+
+model OrganizationActivity {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  clusterName String   @map("cluster_name") @db.VarChar(255)
+  folderName  String   @map("folder_name") @db.VarChar(255)
+  filesMoved  Int      @default(0) @map("files_moved")
+  method      String   @db.VarChar(50) // 'clustering', 'folders', 'hybrid'
+  confidence  Float?   // AI confidence score 0.0-1.0
+  metadata    Json?    // Store cluster details, keywords, etc.
+  timestamp   DateTime @default(now())
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId, timestamp])
+  @@index([method])
+  @@index([timestamp])
+  @@map("organization_activity")
+}
+
+model FileTag {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  fileId     String   @map("file_id") @db.VarChar(255)
+  fileName   String   @map("file_name") @db.VarChar(500)
+  tag        String   @db.VarChar(100)
+  tagType    String   @map("tag_type") @db.VarChar(50) // 'auto', 'manual', 'ai_suggested'
+  confidence Float?   // How confident we are in this tag
+  createdAt  DateTime @default(now()) @map("created_at")
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, fileId, tag])
+  @@index([userId, tag])
+  @@index([fileId])
+  @@index([tagType])
+  @@map("file_tags")
+}
+
+model ClusteringCache {
+  id            String   @id @default(cuid())
+  userId        String   @map("user_id")
+  method        String   @db.VarChar(50)
+  parameters    Json     // maxClusters, minClusterSize, etc.
+  fileIdsHash   String   @map("file_ids_hash") @db.VarChar(64) // Hash of file IDs to detect changes
+  clusters      Json     // Full clustering results
+  createdAt     DateTime @default(now()) @map("created_at")
+  expiresAt     DateTime @map("expires_at") // Expires after 7 days
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId, method])
+  @@index([fileIdsHash])
+  @@index([expiresAt])
+  @@map("clustering_cache")
+}
+
+model OrganizationPreferences {
+  id                 String   @id @default(cuid())
+  userId             String   @unique @map("user_id")
+  preferredMethod    String   @default("hybrid") @map("preferred_method") @db.VarChar(50)
+  maxClusters        Int      @default(6) @map("max_clusters")
+  minClusterSize     Int      @default(3) @map("min_cluster_size")
+  autoCreateFolders  Boolean  @default(false) @map("auto_create_folders")
+  autoTagFiles       Boolean  @default(true) @map("auto_tag_files")
+  preferences        Json?    // Additional user preferences
+  updatedAt          DateTime @default(now()) @map("updated_at")
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("organization_preferences")
+}
+
+model FileOrganizationStatus {
+  id                   String   @id @default(cuid())
+  userId               String   @map("user_id")
+  fileId               String   @map("file_id") @db.VarChar(255)
+  fileName             String   @map("file_name") @db.VarChar(500)
+  originalFolder       String?  @map("original_folder") @db.VarChar(500)
+  organizedFolder      String?  @map("organized_folder") @db.VarChar(500)
+  clusterId            String?  @map("cluster_id") @db.VarChar(100)
+  organizationMethod   String?  @map("organization_method") @db.VarChar(50)
+  organizedAt          DateTime @default(now()) @map("organized_at")
+  confidence           Float?   // Organization confidence
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, fileId])
+  @@index([userId, fileId])
+  @@index([clusterId])
+  @@index([organizedAt])
+  @@map("file_organization_status")
 }
