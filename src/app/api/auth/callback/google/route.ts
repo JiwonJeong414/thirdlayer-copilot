@@ -85,6 +85,7 @@ export async function GET(request: NextRequest) {
 
     // If Drive scopes are present, update Drive connection
     if (tokens.scope?.includes('https://www.googleapis.com/auth/drive') && tokens.access_token) {
+      console.log('🔑 Updating Drive connection with new tokens');
       await prisma.driveConnection.upsert({
         where: { userId: user.id },
         update: {
@@ -103,6 +104,9 @@ export async function GET(request: NextRequest) {
           updatedAt: new Date(),
         },
       });
+      console.log('✅ Drive connection updated successfully');
+    } else {
+      console.log('⚠️ No Drive scopes in token:', tokens.scope);
     }
 
     // Store tokens in session

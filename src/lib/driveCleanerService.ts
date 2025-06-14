@@ -2,6 +2,8 @@
 import { GoogleDriveService } from '@/lib/googleDrive';
 import { VectorService } from '@/lib/vectorService';
 import { PrismaClient } from '@/generated/prisma';
+import { google } from 'googleapis';
+import { drive_v3 } from 'googleapis';
 
 const prisma = new PrismaClient();
 
@@ -49,9 +51,15 @@ export class DriveCleanerService {
       maxFiles?: number;
       includeContent?: boolean;
       enableAI?: boolean;
+      ownedOnly?: boolean;
     } = {}
   ): Promise<CleanableFile[]> {
-    const { maxFiles = 1000, includeContent = true, enableAI = true } = options;
+    const { 
+      maxFiles = 1000, 
+      includeContent = true, 
+      enableAI = true,
+      ownedOnly = true 
+    } = options;
     
     console.log('🧹 Starting Drive cleaner scan (separate from indexing)...');
     
@@ -73,93 +81,142 @@ export class DriveCleanerService {
       throw new Error('Drive connection not found');
     }
 
-    do {
-      const files = await this.driveService.listFiles({
-        userId,
-        id: user.driveConnection.id,
-        accessToken: user.driveConnection.accessToken,
-        refreshToken: user.driveConnection.refreshToken,
-        isConnected: user.driveConnection.isConnected,
-        connectedAt: user.driveConnection.connectedAt,
-        lastSyncAt: user.driveConnection.lastSyncAt
-      });
-      totalScanned += files.length;
+    // Set up Google Drive API
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      process.env.GOOGLE_REDIRECT_URI
+    );
 
-      for (const file of files) {
-        if (!file.id || !file.name || !file.mimeType) continue;
+    oauth2Client.setCredentials({
+      access_token: user.driveConnection.accessToken,
+      refresh_token: user.driveConnection.refreshToken,
+    });
+
+    const drive = google.drive({ version: 'v3', auth: oauth2Client });
+
+    // Scan files in batches
+    try {
+      do {
+        console.log(`📡 Fetching files page ${nextPageToken ? '(next)' : '(first)'}`);
         
-        const fileSize = file.size ? parseInt(file.size) : 0;
-        const fileAge = Date.now() - new Date(file.modifiedTime || new Date()).getTime();
-        
-        // Basic categorization (non-AI)
-        const basicCategory = this.categorizeFileBasic(file, fileSize, fileAge);
-        
-        if (basicCategory) {
-          let content: string | undefined;
-          let aiSummary: string | undefined;
+        const response = await drive.files.list({
+          pageSize: 100,
+          pageToken: nextPageToken,
+          fields: 'nextPageToken, files(id, name, mimeType, size, modifiedTime, webViewLink, owners)',
+          q: ownedOnly ? 'trashed=false and "me" in owners' : 'trashed=false',
+        });
+
+        const files = response.data.files || [];
+        totalScanned += files.length;
+
+        console.log(`📄 Got ${files.length} files, total scanned: ${totalScanned}`);
+
+        for (const file of files) {
+          if (!file.id || !file.name || !file.mimeType) continue;
           
-          // Get content for AI analysis if requested
-          if (includeContent && this.shouldAnalyzeContent(file.mimeType, fileSize)) {
-            try {
-              content = await this.driveService.getFileContent(file.id);
-              if (content && content.length > DriveCleanerService.MAX_CONTENT_LENGTH) {
-                content = content.substring(0, DriveCleanerService.MAX_CONTENT_LENGTH) + '...';
-              }
-            } catch (error) {
-              console.log(`⚠️ Could not get content for ${file.name}: ${error}`);
-            }
+          // Skip if not owned by the user and ownedOnly is true
+          if (ownedOnly && !file.owners?.some((owner: drive_v3.Schema$User) => owner.me === true)) {
+            continue;
+          }
+          
+          const fileSize = file.size ? parseInt(file.size) : 0;
+          
+          // Skip folders
+          if (file.mimeType === 'application/vnd.google-apps.folder') {
+            continue;
           }
 
-          const cleanableFile: CleanableFile = {
-            id: file.id,
-            name: file.name,
-            mimeType: file.mimeType,
-            size: fileSize,
-            modifiedTime: file.modifiedTime || new Date().toISOString(),
-            webViewLink: file.webViewLink || undefined,
-            content,
-            category: basicCategory.category,
-            reason: basicCategory.reason,
-            confidence: basicCategory.confidence,
-            selected: false,
-          };
-
-          // Add AI analysis if enabled and content available
-          if (enableAI && content) {
-            try {
-              const aiRecommendation = await this.getAIRecommendation(cleanableFile);
-              cleanableFile.confidence = this.combineConfidence(
-                basicCategory.confidence, 
-                aiRecommendation.confidence
-              );
-              cleanableFile.aiSummary = aiRecommendation.reasoning;
-              
-              // Update category based on AI analysis
-              if (aiRecommendation.action === 'delete' && aiRecommendation.confidence > 0.8) {
-                cleanableFile.category = this.getAICategory(aiRecommendation.tags);
+          const fileAge = Date.now() - new Date(file.modifiedTime || new Date()).getTime();
+          
+          // Basic categorization (non-AI)
+          const basicCategory = this.categorizeFileBasic(file, fileSize, fileAge);
+          
+          if (basicCategory) {
+            let content: string | undefined;
+            let aiSummary: string | undefined;
+            
+            // Get content for AI analysis if requested
+            if (includeContent && this.shouldAnalyzeContent(file.mimeType, fileSize)) {
+              try {
+                content = await this.driveService.getFileContent(file.id);
+                if (content && content.length > DriveCleanerService.MAX_CONTENT_LENGTH) {
+                  content = content.substring(0, DriveCleanerService.MAX_CONTENT_LENGTH) + '...';
+                }
+              } catch (error) {
+                console.log(`⚠️ Could not get content for ${file.name}: ${error}`);
               }
-            } catch (error) {
-              console.log(`🤖 AI analysis failed for ${file.name}: ${error}`);
             }
+
+            const cleanableFile: CleanableFile = {
+              id: file.id,
+              name: file.name,
+              mimeType: file.mimeType,
+              size: fileSize,
+              modifiedTime: file.modifiedTime || new Date().toISOString(),
+              webViewLink: file.webViewLink || undefined,
+              content,
+              category: basicCategory.category,
+              reason: basicCategory.reason,
+              confidence: basicCategory.confidence,
+              selected: false,
+            };
+
+            // Add AI analysis if enabled and content available
+            if (enableAI && content) {
+              try {
+                const aiRecommendation = await this.getAIRecommendation(cleanableFile);
+                cleanableFile.confidence = this.combineConfidence(
+                  basicCategory.confidence, 
+                  aiRecommendation.confidence
+                );
+                cleanableFile.aiSummary = aiRecommendation.reasoning;
+                
+                // Update category based on AI analysis
+                if (aiRecommendation.action === 'delete' && aiRecommendation.confidence > 0.8) {
+                  cleanableFile.category = this.getAICategory(aiRecommendation.tags);
+                }
+              } catch (error) {
+                console.log(`🤖 AI analysis failed for ${file.name}: ${error}`);
+              }
+            }
+
+            cleanableFiles.push(cleanableFile);
           }
 
-          cleanableFiles.push(cleanableFile);
+          // Break out of the loop if we've reached maxFiles
+          if (cleanableFiles.length >= maxFiles) {
+            console.log(`🛑 Breaking out of page loop - found ${maxFiles} cleanable files`);
+            break;
+          }
         }
-
-        if (cleanableFiles.length >= maxFiles) break;
-      }
-
-      if (totalScanned >= maxFiles * 2) break; // Safety limit
-      
-    } while (cleanableFiles.length < maxFiles);
-
-    // Find duplicates (separate operation)
-    if (enableAI) {
-      await this.findDuplicates(cleanableFiles);
+        
+        nextPageToken = response.data.nextPageToken || undefined;
+        
+        // Break out of the outer loop too when we have maxFiles
+        if (cleanableFiles.length >= maxFiles) {
+          console.log(`🛑 Breaking out of page loop - found ${maxFiles} cleanable files`);
+          break;
+        }
+        
+      } while (nextPageToken && cleanableFiles.length < maxFiles);
+    } catch (driveError) {
+      console.error('❌ Drive API error:', driveError);
+      throw new Error(`Drive API error: ${driveError instanceof Error ? driveError.message : 'Unknown error'}`);
     }
 
-    console.log(`✅ Cleaner scan complete: ${cleanableFiles.length} cleanable files found`);
-    return cleanableFiles.sort((a, b) => this.getSortScore(b) - this.getSortScore(a));
+    console.log(`✅ Scan complete: Found ${cleanableFiles.length} cleanable files out of ${totalScanned} total files`);
+
+    // Sort by confidence and size (most important first)
+    cleanableFiles.sort((a, b) => {
+      const confidenceOrder = { high: 3, medium: 2, low: 1 };
+      const aScore = confidenceOrder[a.confidence] * 1000 + a.size;
+      const bScore = confidenceOrder[b.confidence] * 1000 + b.size;
+      return bScore - aScore;
+    });
+
+    // Return only up to maxFiles
+    return cleanableFiles.slice(0, maxFiles);
   }
 
   // ===================================================================

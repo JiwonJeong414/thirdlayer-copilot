@@ -1,7 +1,4 @@
-
-// STEP 2: Fix the OAuth scopes in your auth URL
-
-// src/app/api/auth/google/url/route.ts - UPDATED to include proper Drive scopes
+// src/app/api/auth/google/url/route.ts - FIXED with delete scope
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import crypto from 'crypto';
@@ -28,31 +25,28 @@ export async function GET(request: NextRequest) {
     // Generate random state for CSRF protection
     const state = crypto.randomBytes(32).toString('hex');
     
-    // FIXED: Include comprehensive Drive scopes
+    // FIXED: Include full Drive scope for delete permissions
     const scopes = [
       'openid',
       'email', 
       'profile',
-      'https://www.googleapis.com/auth/drive.readonly',  // Can read all files
-      'https://www.googleapis.com/auth/drive.metadata.readonly', // Can read metadata
-      'https://www.googleapis.com/auth/drive.file',      // Can read files created by the app
-      'https://www.googleapis.com/auth/drive', // Add this for delete permissions
+      'https://www.googleapis.com/auth/drive', // Full Drive access including delete
     ];
     
-    // Construct OAuth URL with ALL necessary scopes
+    // Construct OAuth URL with delete permissions
     const params = new URLSearchParams({
       client_id: clientId,
       redirect_uri: redirectUri,
       response_type: 'code',
-      scope: scopes.join(' '), // Join all scopes
+      scope: scopes.join(' '),
       access_type: 'offline',
-      prompt: 'consent', // Force consent to get refresh token
+      prompt: 'consent', // Force consent to get refresh token and new permissions
       state
     });
 
     const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
     
-    console.log('Generated OAuth URL with scopes:', scopes);
+    console.log('Generated OAuth URL with FULL Drive scope for delete permissions');
 
     const response = NextResponse.json({ url: authUrl });
     

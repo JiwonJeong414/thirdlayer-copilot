@@ -1,4 +1,4 @@
-// src/app/api/drive/cleaner/delete/route.ts
+// src/app/api/drive/cleaner/delete/route.ts - FIXED with ownership check
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@/generated/prisma';
 import { google } from 'googleapis';
@@ -18,9 +18,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No files specified for deletion' }, { status: 400 });
     }
 
-    if (fileIds.length > 100) {
+    if (fileIds.length > 20) {
       return NextResponse.json({ 
-        error: 'Too many files selected. Please delete in smaller batches (max 100).' 
+        error: 'Too many files selected. Please delete in smaller batches (max 20).' 
       }, { status: 400 });
     }
 
@@ -62,15 +62,24 @@ export async function POST(request: NextRequest) {
     let errorCount = 0;
     const errors: string[] = [];
     const deletedFiles: string[] = [];
+    const skippedFiles: string[] = [];
 
     for (let i = 0; i < fileIds.length; i++) {
       const fileId = fileIds[i];
       
       try {
+        // FIXED: Check file ownership before deleting
         const fileInfo = await drive.files.get({
           fileId,
-          fields: 'name, size, mimeType'
+          fields: 'name, size, mimeType, ownedByMe, owners'
         });
+
+        // SAFETY CHECK: Only delete files owned by the user
+        if (fileInfo.data.ownedByMe !== true) {
+          console.log(`⚠️ SKIPPING: File not owned by user: ${fileInfo.data.name}`);
+          skippedFiles.push(fileInfo.data.name || fileId);
+          continue;
+        }
 
         await drive.files.delete({ fileId });
         
@@ -80,7 +89,7 @@ export async function POST(request: NextRequest) {
         console.log(`✅ Deleted (${i + 1}/${fileIds.length}): ${fileInfo.data.name} (${fileInfo.data.size} bytes)`);
         
         if (i < fileIds.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise(resolve => setTimeout(resolve, 200)); // Slower for safety
         }
         
       } catch (error) {
@@ -88,6 +97,11 @@ export async function POST(request: NextRequest) {
         const errorMsg = error instanceof Error ? error.message : 'Unknown error';
         errors.push(`${fileId}: ${errorMsg}`);
         console.error(`❌ Failed to delete file ${fileId}:`, error);
+        
+        // If it's a permission error, mention it
+        if (errorMsg.includes('write access') || errorMsg.includes('403')) {
+          console.error(`🚫 Permission denied for file ${fileId} - likely not owned by user`);
+        }
       }
     }
 
@@ -106,18 +120,20 @@ export async function POST(request: NextRequest) {
       console.error('Failed to log cleanup activity:', dbError);
     }
 
-    console.log(`🏁 Deletion complete: ${deletedCount} deleted, ${errorCount} errors`);
+    console.log(`🏁 Deletion complete: ${deletedCount} deleted, ${skippedFiles.length} skipped, ${errorCount} errors`);
 
     return NextResponse.json({
       success: true,
       deletedCount,
       errorCount,
+      skippedCount: skippedFiles.length,
       totalRequested: fileIds.length,
-      errors: errors.slice(0, 10),
+      errors: errors.slice(0, 5),
       deletedFiles: deletedFiles.slice(0, 10),
-      message: errorCount === 0 
+      skippedFiles: skippedFiles.slice(0, 5),
+      message: errorCount === 0 && skippedFiles.length === 0
         ? `Successfully deleted all ${deletedCount} files!`
-        : `Deleted ${deletedCount} out of ${fileIds.length} files (${errorCount} errors)`
+        : `Deleted ${deletedCount} files. ${skippedFiles.length} skipped (not owned), ${errorCount} errors.`
     });
 
   } catch (error) {

@@ -75,26 +75,37 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          maxFiles: 50,
+          maxFiles: 5, // Scan for exactly 5 files
           includeContent: true,
-          enableAI: true 
+          enableAI: true,
+          ownedOnly: true // Only get files owned by the user
         }),
       });
       
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to scan files');
+        let errorMessage = 'Failed to scan files';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.details || errorMessage;
+        } catch (parseError) {
+          // If we can't parse the error response, use status text
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
       }
       
       const data = await response.json();
       console.log('✅ Scan completed:', data);
       
       if (data.files && data.files.length > 0) {
-        setFiles(data.files);
+        // The backend should already limit to 5 files, but we'll enforce it here too
+        const limitedFiles = data.files.slice(0, 5);
+        setFiles(limitedFiles);
         setCurrentIndex(0);
         setDecisions([]);
+        console.log(`📱 Loaded ${limitedFiles.length} files for swiping`);
       } else {
-        setError('No cleanable files found. Your Drive is already clean! 🎉');
+        setError('No cleanable files found in this batch. Your Drive looks clean! 🎉 Try again to scan more files.');
       }
     } catch (error) {
       console.error('❌ Scan failed:', error);
@@ -166,7 +177,7 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
     handleEnd();
   };
 
-  const makeDecision = (action: 'keep' | 'delete') => {
+  const makeDecision = async (action: 'keep' | 'delete') => {
     if (!currentFile) return;
     
     const decision: SwipeDecision = {
@@ -174,6 +185,55 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
       action,
       timestamp: Date.now()
     };
+    
+    // If user chose to delete, delete it immediately
+    if (action === 'delete') {
+      try {
+        console.log(`🗑️ Deleting file immediately: ${currentFile.name}`);
+        
+        const response = await fetch('/api/drive/cleaner/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            fileIds: [currentFile.id],
+            dryRun: false 
+          }),
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`✅ Successfully deleted: ${currentFile.name}`);
+          
+          // Show a quick success message
+          const toast = document.createElement('div');
+          toast.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg z-50';
+          toast.textContent = `🗑️ Deleted: ${currentFile.name}`;
+          document.body.appendChild(toast);
+          setTimeout(() => document.body.removeChild(toast), 2000);
+        } else {
+          throw new Error('Delete failed');
+        }
+      } catch (error) {
+        console.error('❌ Failed to delete file:', error);
+        
+        // Show error message with reconnect suggestion
+        const toast = document.createElement('div');
+        toast.className = 'fixed top-4 right-4 bg-red-600 text-white px-4 py-3 rounded-lg z-50 max-w-sm';
+        toast.innerHTML = `
+          <div class="font-medium">❌ Permission Error</div>
+          <div class="text-sm mb-2">Cannot delete "${currentFile.name}". You need delete permissions.</div>
+          <button onclick="window.location.href='/api/auth/google/url'" class="bg-white text-red-600 px-2 py-1 rounded text-xs font-medium">
+            Reconnect Drive
+          </button>
+        `;
+        document.body.appendChild(toast);
+        setTimeout(() => {
+          if (document.body.contains(toast)) {
+            document.body.removeChild(toast);
+          }
+        }, 8000);
+      }
+    }
     
     setDecisions(prev => [...prev, decision]);
     setCurrentIndex(prev => prev + 1);
@@ -349,12 +409,12 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
             {isLoading ? (
               <>
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                <span>Scanning...</span>
+                <span>Finding 5 files...</span>
               </>
             ) : (
               <>
                 <Brain className="w-4 h-4" />
-                <span>AI Scan</span>
+                <span>Find 5 Files</span>
               </>
             )}
           </button>
@@ -397,21 +457,19 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
                 <div className="w-16 h-16 bg-green-600/20 rounded-full mx-auto mb-4 flex items-center justify-center">
                   <CheckCircle className="w-8 h-8 text-green-400" />
                 </div>
-                <h3 className="text-xl font-medium text-white mb-2">All Done!</h3>
+                <h3 className="text-xl font-medium text-white mb-2">Batch Complete!</h3>
                 <p className="text-gray-400 mb-4">
                   {decisions.length === 0 
-                    ? 'Start by scanning your Drive for files to clean.'
-                    : `Reviewed ${decisions.length} files. Ready to process?`
+                    ? 'Click "Find 5 Files" to scan another batch of 5 files to clean.'
+                    : `Reviewed ${decisions.length} files in this batch.`
                   }
                 </p>
-                {decisions.length > 0 && (
-                  <button
-                    onClick={processDecisions}
-                    className="px-6 py-3 bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
-                  >
-                    Delete {decisions.filter(d => d.action === 'delete').length} Files
-                  </button>
-                )}
+                <button
+                  onClick={startScan}
+                  className="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                >
+                  Find Next 5 Files
+                </button>
               </div>
             </div>
           ) : (

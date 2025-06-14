@@ -9,9 +9,7 @@ const oauth2Client = new google.auth.OAuth2(
 
 export const getDriveAuthUrl = (state: string) => {
   const scopes = [
-    'https://www.googleapis.com/auth/drive.readonly',
-    'https://www.googleapis.com/auth/drive.metadata.readonly',
-    'https://www.googleapis.com/auth/drive.file',
+    'https://www.googleapis.com/auth/drive', // Full Drive access including delete
   ];
 
   return oauth2Client.generateAuthUrl({
