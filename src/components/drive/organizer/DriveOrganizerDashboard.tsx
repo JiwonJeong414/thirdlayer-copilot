@@ -178,24 +178,8 @@ export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-800 to-pink-800 text-white">
-      <div className="max-w-7xl mx-auto p-6">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center space-x-3 mb-4">
-            <div className="p-4 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl">
-              <Brain className="w-10 h-10 text-white" />
-            </div>
-            <div>
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-                AI Drive Organizer
-              </h1>
-              <p className="text-gray-300 text-lg">
-                Intelligent file organization using K-means clustering and folder analysis
-              </p>
-            </div>
-          </div>
-        </div>
+      <div className="relative">
+        <div className="max-w-7xl mx-auto p-6">
 
         {/* Configuration Panel */}
         {!suggestion && (
