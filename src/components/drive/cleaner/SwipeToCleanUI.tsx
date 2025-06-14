@@ -1,4 +1,4 @@
-// src/components/drive/cleaner/SwipeToCleanUI.tsx - Fixed structure
+// src/components/drive/cleaner/SwipeToCleanUI.tsx - SIMPLIFIED WORKING VERSION
 'use client';
 
 import React, { useState, useRef } from 'react';
@@ -66,7 +66,7 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const startPosRef = useRef({ x: 0, y: 0 });
 
-  // Integrated scan function
+  // Scan for cleanable files
   const startScan = async () => {
     setIsLoading(true);
     setError(null);
@@ -134,7 +134,7 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
   const hasMoreFiles = currentIndex < files.length;
   const progress = files.length > 0 ? ((currentIndex) / files.length) * 100 : 0;
 
-  // Touch/Mouse event handlers
+  // SIMPLIFIED event handlers - based on working version
   const handleStart = (clientX: number, clientY: number) => {
     setIsDragging(true);
     startPosRef.current = { x: clientX, y: clientY };
@@ -163,7 +163,7 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
     setDragOffset({ x: 0, y: 0 });
   };
 
-  // Mouse events
+  // Mouse events - SIMPLIFIED
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
     handleStart(e.clientX, e.clientY);
@@ -177,7 +177,7 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
     handleEnd();
   };
 
-  // Touch events
+  // Touch events - SIMPLIFIED
   const handleTouchStart = (e: React.TouchEvent) => {
     const touch = e.touches[0];
     handleStart(touch.clientX, touch.clientY);
@@ -318,9 +318,7 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8 }}
         >
-          {/* Header with better spacing */}
           <div className="flex items-center justify-between mb-8 px-2">
-            {/* Back Button - Left side with more space */}
             <motion.button
               onClick={onBack}
               className="flex items-center space-x-2 text-pink-300 hover:text-white transition-colors p-3 rounded-xl hover:bg-pink-800/30 backdrop-blur-sm"
@@ -331,7 +329,6 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
               <span className="font-medium">Back</span>
             </motion.button>
             
-            {/* Center Title Section - More compact and aligned */}
             <div className="flex items-center space-x-3">
               <motion.div 
                 className="p-3 bg-gradient-to-r from-pink-500 to-purple-500 rounded-xl shadow-lg"
@@ -348,11 +345,10 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
               </div>
             </div>
             
-            {/* Right spacer to balance layout */}
             <div className="w-20" />
           </div>
 
-          {/* Progress Bar - More space from header */}
+          {/* Progress Bar */}
           {files.length > 0 && (
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
@@ -377,7 +373,7 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
           )}
         </motion.div>
 
-        {/* Control Buttons - More space from header */}
+        {/* Control Buttons */}
         <motion.div 
           className="flex justify-center space-x-4 mb-8"
           initial={{ opacity: 0, y: 20 }}
@@ -482,8 +478,7 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
                 </div>
               </motion.div>
             ) : (
-              <motion.div
-                key={currentFile?.id}
+              <div
                 ref={cardRef}
                 className="absolute inset-0 cursor-grab active:cursor-grabbing"
                 style={{
@@ -497,37 +492,22 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
-                initial={{ scale: 0.9, opacity: 0, y: 50 }}
-                animate={{ scale: 1, opacity: 1, y: 0 }}
-                exit={{ scale: 0.9, opacity: 0, y: -50 }}
-                transition={{ duration: 0.3 }}
               >
                 {/* Swipe Hint Overlay */}
-                <AnimatePresence>
-                  {getSwipeHint() && (
-                    <motion.div 
-                      className={`absolute inset-0 flex items-center justify-center z-10 rounded-xl border-4 backdrop-blur-sm ${
-                        getSwipeHint() === 'KEEP' 
-                          ? 'bg-green-500/20 border-green-500' 
-                          : 'bg-red-500/20 border-red-500'
-                      }`}
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.9 }}
-                    >
-                      <motion.div 
-                        className="text-4xl font-bold"
-                        animate={{ scale: [1, 1.1, 1] }}
-                        transition={{ duration: 0.5, repeat: Infinity }}
-                      >
-                        {getSwipeHint() === 'KEEP' ? '💚 KEEP' : '🗑️ DELETE'}
-                      </motion.div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                {getSwipeHint() && (
+                  <div className={`absolute inset-0 flex items-center justify-center z-10 rounded-xl border-4 ${
+                    getSwipeHint() === 'KEEP' 
+                      ? 'bg-green-500/20 border-green-500' 
+                      : 'bg-red-500/20 border-red-500'
+                  }`}>
+                    <div className="text-4xl font-bold">
+                      {getSwipeHint() === 'KEEP' ? '💚 KEEP' : '🗑️ DELETE'}
+                    </div>
+                  </div>
+                )}
 
                 {/* File Card */}
-                <div className="bg-gradient-to-br from-gray-800/90 via-gray-700/90 to-gray-800/90 backdrop-blur-sm border border-pink-500/30 rounded-xl p-6 h-full flex flex-col shadow-2xl">
+                <div className="bg-gradient-to-br from-gray-800/90 via-gray-700/90 to-gray-800/90 backdrop-blur-sm border border-pink-500/30 rounded-xl p-6 h-full flex flex-col">
                   {/* File Header */}
                   <div className="flex items-start space-x-4 mb-4">
                     <motion.div 
@@ -625,7 +605,7 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
                     </motion.div>
                   )}
                 </div>
-              </motion.div>
+              </div>
             )}
           </AnimatePresence>
         </div>
