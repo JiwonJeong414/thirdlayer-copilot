@@ -1,4 +1,4 @@
-// src/components/LandingPage.tsx - Updated to integrate with existing app
+// src/components/LandingPage.tsx - Updated with separate links for AI features
 'use client';
 
 import React from 'react';
@@ -41,7 +41,7 @@ const LandingPage = () => {
       bgColor: 'bg-blue-500/10',
       borderColor: 'border-blue-500/20',
       stats: ['Smart document search', 'Natural language queries', 'Context-aware responses'],
-      href: '/', // Goes to main chat
+      href: '/?chat=true', // Goes to main chat
     },
     {
       id: 'cleanup',
@@ -53,7 +53,7 @@ const LandingPage = () => {
       bgColor: 'bg-purple-500/10',
       borderColor: 'border-purple-500/20',
       stats: ['Duplicate detection', 'Smart categorization', 'Space optimization'],
-      href: '/cleaner',
+      href: '/cleanup', // Separate cleanup page
     },
     {
       id: 'organize',
@@ -65,7 +65,7 @@ const LandingPage = () => {
       bgColor: 'bg-emerald-500/10',
       borderColor: 'border-emerald-500/20',
       stats: ['Smart folders', 'Auto-categorization', 'ML-powered insights'],
-      href: '/cleaner?mode=organize',
+      href: '/organize', // Separate organization page
     }
   ];
 
@@ -77,7 +77,7 @@ const LandingPage = () => {
 
   const handleGetStarted = () => {
     if (user) {
-      router.push('/'); // Go to main app
+      router.push('/'); // Go to dashboard
     }
   };
 

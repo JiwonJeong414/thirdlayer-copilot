@@ -1,7 +1,7 @@
-// src/components/drive/SwipeToCleanUI.tsx - FIXED to use real files
+// src/components/drive/cleaner/SwipeToCleanUI.tsx - Fixed and cleaned up
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   Trash2, 
   Heart, 
@@ -64,51 +64,80 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const startPosRef = useRef({ x: 0, y: 0 });
 
-  // FIXED: Load real files from Drive
+  // Integrated scan function that combines sync + cleanup scanning
   const startScan = async () => {
     setIsLoading(true);
     setError(null);
+    setFiles([]);
+    setCurrentIndex(0);
+    setDecisions([]);
+    
     try {
-      console.log('🚀 Starting AI scan for cleanable files...');
+      console.log('🚀 Starting integrated scan (sync + cleanup)...');
       
-      const response = await fetch('/api/drive/cleaner/scan', {
+      // Step 1: Sync new files first
+      console.log('📥 Step 1: Syncing new files...');
+      const syncResponse = await fetch('/api/drive/sync?limit=10', {
+        method: 'POST',
+      });
+      
+      if (syncResponse.ok) {
+        const syncData = await syncResponse.json();
+        console.log('✅ Sync completed:', {
+          newFiles: syncData.embeddingCount,
+          totalIndexed: syncData.totalIndexedFiles
+        });
+        
+        // Show quick notification
+        const toast = document.createElement('div');
+        toast.className = 'fixed top-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-lg z-50';
+        toast.textContent = `📥 Synced ${syncData.embeddingCount || 0} new files`;
+        document.body.appendChild(toast);
+        setTimeout(() => {
+          if (document.body.contains(toast)) {
+            document.body.removeChild(toast);
+          }
+        }, 3000);
+      } else {
+        console.warn('⚠️ Sync failed, proceeding with cleanup scan anyway');
+      }
+      
+      // Step 2: Scan for cleanable files
+      console.log('🧹 Step 2: Scanning for cleanable files...');
+      const cleanupResponse = await fetch('/api/drive/cleaner/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          maxFiles: 5, // Scan for exactly 5 files
+          maxFiles: 5,
           includeContent: true,
           enableAI: true,
-          ownedOnly: true // Only get files owned by the user
+          ownedOnly: true
         }),
       });
       
-      if (!response.ok) {
+      if (!cleanupResponse.ok) {
         let errorMessage = 'Failed to scan files';
         try {
-          const errorData = await response.json();
+          const errorData = await cleanupResponse.json();
           errorMessage = errorData.error || errorData.details || errorMessage;
         } catch (parseError) {
-          // If we can't parse the error response, use status text
-          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+          errorMessage = `HTTP ${cleanupResponse.status}: ${cleanupResponse.statusText}`;
         }
         throw new Error(errorMessage);
       }
       
-      const data = await response.json();
-      console.log('✅ Scan completed:', data);
+      const cleanupData = await cleanupResponse.json();
+      console.log('✅ Cleanup scan completed:', cleanupData);
       
-      if (data.files && data.files.length > 0) {
-        // The backend should already limit to 5 files, but we'll enforce it here too
-        const limitedFiles = data.files.slice(0, 5);
+      if (cleanupData.files && cleanupData.files.length > 0) {
+        const limitedFiles = cleanupData.files.slice(0, 5);
         setFiles(limitedFiles);
-        setCurrentIndex(0);
-        setDecisions([]);
         console.log(`📱 Loaded ${limitedFiles.length} files for swiping`);
       } else {
         setError('No cleanable files found in this batch. Your Drive looks clean! 🎉 Try again to scan more files.');
       }
     } catch (error) {
-      console.error('❌ Scan failed:', error);
+      console.error('❌ Integrated scan failed:', error);
       setError(error instanceof Error ? error.message : 'Failed to scan files');
     } finally {
       setIsLoading(false);
@@ -209,7 +238,11 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
           toast.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg z-50';
           toast.textContent = `🗑️ Deleted: ${currentFile.name}`;
           document.body.appendChild(toast);
-          setTimeout(() => document.body.removeChild(toast), 2000);
+          setTimeout(() => {
+            if (document.body.contains(toast)) {
+              document.body.removeChild(toast);
+            }
+          }, 2000);
         } else {
           throw new Error('Delete failed');
         }
@@ -308,52 +341,6 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
     return `${Math.floor(days / 365)} years ago`;
   };
 
-  // FIXED: Process real deletions
-  const processDecisions = async () => {
-    const filesToDelete = decisions
-      .filter(d => d.action === 'delete')
-      .map(d => d.fileId);
-    
-    if (filesToDelete.length === 0) {
-      alert('No files selected for deletion.');
-      return;
-    }
-
-    const confirmed = confirm(`🗑️ Delete ${filesToDelete.length} files permanently? This cannot be undone.`);
-    if (!confirmed) return;
-
-    try {
-      console.log('🗑️ Deleting files:', filesToDelete);
-      
-      const response = await fetch('/api/drive/cleaner/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          fileIds: filesToDelete,
-          dryRun: false 
-        }),
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to delete files');
-      }
-      
-      const data = await response.json();
-      console.log('✅ Deletion completed:', data);
-      
-      alert(`🎉 Successfully deleted ${data.deletedCount} files!\n\nFreed up space and cleaned your Drive.`);
-      
-      // Reset for new scan
-      setFiles([]);
-      setCurrentIndex(0);
-      setDecisions([]);
-    } catch (error) {
-      console.error('❌ Failed to delete files:', error);
-      alert('Failed to delete some files. Please try again.');
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white overflow-hidden">
       <div className="max-w-md mx-auto p-6">
@@ -409,7 +396,7 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
             {isLoading ? (
               <>
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                <span>Finding 5 files...</span>
+                <span>Scanning Drive...</span>
               </>
             ) : (
               <>

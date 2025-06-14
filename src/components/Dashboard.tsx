@@ -1,4 +1,4 @@
-// src/components/Dashboard.tsx - Clean version
+// src/components/Dashboard.tsx - Updated with separate links for AI features
 'use client';
 
 import React, { useState } from 'react';
@@ -104,7 +104,7 @@ const Dashboard = () => {
     </motion.div>
   );
 
-  // Feature definitions
+  // Updated feature definitions with separate pages
   const features = [
     {
       id: 'chat',
@@ -126,30 +126,30 @@ const Dashboard = () => {
     {
       id: 'cleanup',
       title: 'AI Cleanup',
-      subtitle: 'Smart Organization',
-      description: 'Automatically detect duplicates, organize files, and optimize your storage with intelligent AI recommendations.',
+      subtitle: 'Smart File Cleanup',
+      description: 'Automatically detect duplicates, remove junk files, and optimize your storage with intelligent AI recommendations.',
       icon: Sparkles,
       gradient: 'from-purple-500 via-pink-500 to-red-500',
       darkBgGradient: 'from-purple-900/20 to-pink-900/20',
       borderColor: 'border-purple-200 hover:border-purple-300 dark:border-purple-800 dark:hover:border-purple-700',
-      href: '/cleaner',
+      href: '/cleanup', // Separate cleanup page
       stats: {
         primary: '2.3GB',
         primaryLabel: 'Space Saved',
         secondary: '156',
-        secondaryLabel: 'Files Organized'
+        secondaryLabel: 'Files Cleaned'
       }
     },
     {
       id: 'organize',
       title: 'AI Organization',
-      subtitle: 'Perfect Structure',
+      subtitle: 'Smart Folder Management',
       description: 'Let AI create the perfect folder hierarchy and automatically categorize your files for maximum productivity.',
       icon: Brain,
       gradient: 'from-emerald-500 via-green-500 to-teal-600',
       darkBgGradient: 'from-emerald-900/20 to-green-900/20',
       borderColor: 'border-emerald-200 hover:border-emerald-300 dark:border-emerald-800 dark:hover:border-emerald-700',
-      href: '/cleaner?mode=organize',
+      href: '/organize', // Separate organization page
       stats: {
         primary: '12',
         primaryLabel: 'Smart Folders',
@@ -159,10 +159,12 @@ const Dashboard = () => {
     }
   ];
 
-  // Quick actions with sync functionality
+  // Quick actions with updated links
   const quickActions = [
     { icon: Plus, label: 'New Chat', action: () => router.push('/?chat=true') },
     { icon: Search, label: 'Search Files', action: () => router.push('/?search=true') },
+    { icon: Sparkles, label: 'AI Cleanup', action: () => router.push('/cleanup') },
+    { icon: Brain, label: 'AI Organize', action: () => router.push('/organize') },
     { icon: RefreshCw, label: 'Sync Drive', action: () => setShowSyncModal(true) },
     { icon: Settings, label: 'Settings', action: () => {} },
   ];
@@ -405,7 +407,7 @@ const Dashboard = () => {
           })}
         </div>
 
-        {/* Quick Actions */}
+        {/* Quick Actions - Updated Grid */}
         <motion.div 
           className="bg-white dark:bg-gray-800 rounded-3xl border border-gray-200 dark:border-gray-700 p-8 mb-8"
           initial={{ opacity: 0, y: 30 }}
@@ -413,7 +415,7 @@ const Dashboard = () => {
           transition={{ delay: 2.6, duration: 0.8 }}
         >
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Quick Actions</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-3 md:grid-cols-6 gap-4">
             {quickActions.map((action, index) => {
               const Icon = action.icon;
               return (
