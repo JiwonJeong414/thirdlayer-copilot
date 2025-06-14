@@ -23,6 +23,7 @@ model User {
   driveConnection     DriveConnection?
   documents           Document[]
   documentEmbeddings  DocumentEmbedding[]
+  cleanupActivities   CleanupActivity[]
 
   @@map("users")
 }
@@ -109,4 +110,18 @@ model Document {
   updatedAt   DateTime @updatedAt
 
   @@index([userId])
+}
+
+model CleanupActivity {
+  id               String    @id @default(cuid())
+  userId           String
+  filesDeleted     Int
+  filesRequested   Int
+  errors           Int
+  deletedFileNames String[]  // Array of deleted file names
+  timestamp        DateTime  @default(now())
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("cleanup_activities")
 }

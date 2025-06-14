@@ -65,8 +65,15 @@ export async function POST(request: NextRequest) {
     console.log('🔍 Fetching files from Google Drive...');
 
     do {
-      const response = await driveService.listFiles(100, nextPageToken);
-      const pageFiles = response.files;
+      const pageFiles = await driveService.listFiles({
+        userId: user.id,
+        id: user.driveConnection.id,
+        accessToken: user.driveConnection.accessToken,
+        refreshToken: user.driveConnection.refreshToken,
+        isConnected: user.driveConnection.isConnected,
+        connectedAt: user.driveConnection.connectedAt,
+        lastSyncAt: user.driveConnection.lastSyncAt
+      });
       
       if (!pageFiles || pageFiles.length === 0) {
         console.log('No more files found, breaking...');
@@ -76,17 +83,16 @@ export async function POST(request: NextRequest) {
       allFiles = allFiles.concat(pageFiles);
       
       // Count processable files on this page
-      const pageProcessableFiles = pageFiles.filter(file => shouldProcessFile(file.mimeType));
+      const pageProcessableFiles = pageFiles.filter((file: any) => shouldProcessFile(file.mimeType));
       processableFilesFound += pageProcessableFiles.length;
       
       console.log(`📄 Page ${pagesFetched + 1}: ${pageFiles.length} total files, ${pageProcessableFiles.length} processable files`);
-      console.log(`   Sample files: ${pageFiles.slice(0, 3).map(f => `${f.name} (${f.mimeType})`).join(', ')}`);
+      console.log(`   Sample files: ${pageFiles.slice(0, 3).map((f: any) => `${f.name} (${f.mimeType})`).join(', ')}`);
       
-      nextPageToken = response.nextPageToken;
       pagesFetched++;
       
       // Continue until we have enough processable files OR hit the page limit
-    } while (nextPageToken && pagesFetched < maxPagesToFetch);
+    } while (pagesFetched < maxPagesToFetch);
 
     console.log(`📈 Total files fetched: ${allFiles.length}, processable: ${allFiles.filter(f => shouldProcessFile(f.mimeType)).length}`);
 

@@ -52,13 +52,22 @@ export async function POST(request: NextRequest) {
 
     // Scan files in batches
     do {
-      const response = await driveService.listFiles(100, nextPageToken);
-      const files = response.files;
+      const files = await driveService.listFiles({
+        userId: user.id,
+        id: user.driveConnection.id,
+        accessToken: user.driveConnection.accessToken,
+        refreshToken: user.driveConnection.refreshToken,
+        isConnected: user.driveConnection.isConnected,
+        connectedAt: user.driveConnection.connectedAt,
+        lastSyncAt: user.driveConnection.lastSyncAt
+      });
       totalScanned += files.length;
 
       console.log(`Scanned ${totalScanned} files so far...`);
 
       for (const file of files) {
+        if (!file.id || !file.name || !file.mimeType) continue;
+        
         const fileSize = file.size ? parseInt(file.size) : 0;
         
         // Skip folders
@@ -111,16 +120,14 @@ export async function POST(request: NextRequest) {
             name: file.name,
             mimeType: file.mimeType,
             size: fileSize,
-            modifiedTime: file.modifiedTime,
-            webViewLink: file.webViewLink,
+            modifiedTime: file.modifiedTime || new Date().toISOString(),
+            webViewLink: file.webViewLink || undefined,
             selected: false,
             category,
             reason,
           });
         }
       }
-
-      nextPageToken = response.nextPageToken;
       
       // Limit scan to prevent timeout (adjust as needed)
       if (totalScanned >= 1000) {
@@ -128,7 +135,7 @@ export async function POST(request: NextRequest) {
         break;
       }
       
-    } while (nextPageToken);
+    } while (true);
 
     console.log(`✅ Scan complete: Found ${smallFiles.length} cleanable files out of ${totalScanned} total files`);
 

@@ -248,30 +248,30 @@ export default function Sidebar() {
 
           {/* Drive Status */}
           {driveConnection.isConnected ? (
-            <div className="space-y-3">
-              {/* Simple Stats */}
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-gray-400">{indexedFiles.length} documents indexed</span>
-                <div className="flex items-center space-x-1 text-green-400">
-                  <CheckCircle className="w-3 h-3" />
-                  <span>Ready</span>
-                </div>
+            <div className="mt-2">
+              <div className="flex items-center justify-between text-xs text-gray-400">
+                <span>Indexed Files</span>
+                <span>{indexedFiles.length}</span>
               </div>
-
-              {/* Drive Search Toggle */}
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">Search Drive</span>
+              
+              {/* Add Drive Cleaner buttons */}
+              <div className="flex items-center space-x-2 mt-2">
                 <button
-                  onClick={() => setDriveSearchEnabled(!driveSearchEnabled)}
-                  className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
-                    driveSearchEnabled ? 'bg-blue-600' : 'bg-gray-600'
-                  }`}
+                  onClick={() => window.location.href = '/cleaner'}
+                  className="flex items-center space-x-1 px-2 py-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded text-xs transition-colors"
+                  title="AI-powered file cleanup"
                 >
-                  <span
-                    className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
-                      driveSearchEnabled ? 'translate-x-4' : 'translate-x-0.5'
-                    }`}
-                  />
+                  <Sparkles className="w-3 h-3" />
+                  <span>AI Clean</span>
+                </button>
+                
+                <button
+                  onClick={() => window.location.href = '/cleaner?mode=batch'}
+                  className="flex items-center space-x-1 px-2 py-1 bg-orange-600 hover:bg-orange-700 text-white rounded text-xs transition-colors"
+                  title="Quick cleanup suggestions"
+                >
+                  <Zap className="w-3 h-3" />
+                  <span>Quick</span>
                 </button>
               </div>
             </div>

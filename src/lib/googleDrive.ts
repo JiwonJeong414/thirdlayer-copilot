@@ -18,6 +18,16 @@ export interface DriveCredentials {
   expiry_date?: number;
 }
 
+export interface DriveConnection {
+  userId: string;
+  id: string;
+  accessToken: string;
+  refreshToken: string | null;
+  isConnected: boolean;
+  connectedAt: Date;
+  lastSyncAt: Date | null;
+}
+
 export class GoogleDriveService {
   private oauth2Client: OAuth2Client;
   private drive: drive_v3.Drive;
@@ -51,54 +61,37 @@ export class GoogleDriveService {
     });
   }
 
-  async listFiles(pageSize: number = 100, pageToken?: string): Promise<{
-    files: DriveFile[];
-    nextPageToken?: string;
-  }> {
-    try {
-      console.log('Listing Drive files...');
-      
-      // FIXED: This was the problem - the query was too restrictive
-      // Changed from just "trashed=false" to include all files
-      const response = await this.drive.files.list({
-        pageSize,
+  async listFiles(connection: DriveConnection): Promise<drive_v3.Schema$File[]> {
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      process.env.GOOGLE_REDIRECT_URI
+    );
+
+    oauth2Client.setCredentials({
+      access_token: connection.accessToken,
+      refresh_token: connection.refreshToken,
+    });
+
+    const drive = google.drive({ version: 'v3', auth: oauth2Client });
+    const files: drive_v3.Schema$File[] = [];
+    let pageToken: string | undefined;
+
+    do {
+      const response = await drive.files.list({
+        pageSize: 1000,
         pageToken,
-        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, size, parents, webViewLink)',
-        q: "trashed=false", // This will get ALL files (not just specific types)
-        orderBy: 'modifiedTime desc', // Get most recent files first
+        fields: 'nextPageToken, files(id, name, mimeType, size, modifiedTime, webViewLink)',
       });
 
-      if (!response.data) {
-        throw new Error('No data received from Drive API');
+      if (response.data.files) {
+        files.push(...response.data.files);
       }
 
-      console.log(`Found ${response.data.files?.length || 0} files`);
-      
-      // Debug: Log first few files to see what we're getting
-      if (response.data.files && response.data.files.length > 0) {
-        console.log('Sample files found:', response.data.files.slice(0, 3).map(f => ({
-          name: f.name,
-          mimeType: f.mimeType,
-          id: f.id
-        })));
-      }
-      
-      return {
-        files: response.data.files as DriveFile[] || [],
-        nextPageToken: response.data.nextPageToken || undefined,
-      };
-    } catch (error) {
-      console.error('Error listing Drive files:', error);
-      if (error instanceof Error) {
-        if (error.message.includes('invalid_grant')) {
-          throw new Error('Drive access token expired. Please reconnect your Drive account.');
-        }
-        if (error.message.includes('insufficient permission')) {
-          throw new Error('Insufficient permissions to access Drive. Please check your Google Drive permissions.');
-        }
-      }
-      throw new Error('Failed to list Drive files');
-    }
+      pageToken = response.data.nextPageToken || undefined;
+    } while (pageToken);
+
+    return files;
   }
 
   async getFileContent(fileId: string): Promise<string> {
