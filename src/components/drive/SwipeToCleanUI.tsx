@@ -1,3 +1,6 @@
+// src/components/drive/SwipeToCleanUI.tsx - FIXED to use real files
+'use client';
+
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Trash2, 
@@ -17,7 +20,8 @@ import {
   AlertTriangle,
   Clock,
   Copy,
-  HardDrive
+  HardDrive,
+  ArrowLeft
 } from 'lucide-react';
 
 interface CleanableFile {
@@ -54,81 +58,51 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
-  const [showBatchSuggestion, setShowBatchSuggestion] = useState(false);
   const [autoCleanMode, setAutoCleanMode] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   const cardRef = useRef<HTMLDivElement>(null);
   const startPosRef = useRef({ x: 0, y: 0 });
 
-  // Mock data for demonstration
-  useEffect(() => {
-    const mockFiles: CleanableFile[] = [
-      {
-        id: '1',
-        name: 'Untitled document (3).docx',
-        mimeType: 'application/vnd.google-apps.document',
-        size: 45,
-        modifiedTime: '2024-01-15T10:30:00Z',
-        category: 'empty',
-        reason: 'Nearly empty document',
-        confidence: 'high',
-        aiSummary: 'This document appears to be completely empty with no meaningful content. It was likely created accidentally and never used.',
-        content: '   \n\n\n   ',
-        selected: false,
-      },
-      {
-        id: '2',
-        name: 'Screenshot 2023-12-01 at 3.45.22 PM.png',
-        mimeType: 'image/png',
-        size: 1024,
-        modifiedTime: '2023-12-01T15:45:22Z',
-        category: 'tiny',
-        reason: 'Very small image file',
-        confidence: 'medium',
-        aiSummary: 'Small screenshot, possibly an error message or partial capture. Quality seems low.',
-        selected: false,
-      },
-      {
-        id: '3',
-        name: 'Resume - John Doe - Copy.pdf',
-        mimeType: 'application/pdf',
-        size: 156000,
-        modifiedTime: '2023-10-15T14:22:00Z',
-        category: 'duplicate',
-        reason: '94.5% similar to "Resume - John Doe.pdf"',
-        confidence: 'high',
-        aiSummary: 'This appears to be a duplicate of an existing resume with only minor formatting differences.',
-        duplicateOf: 'original-resume-id',
-        selected: false,
-      },
-      {
-        id: '4',
-        name: 'Meeting Notes Template.docx',
-        mimeType: 'application/vnd.google-apps.document',
-        size: 2400,
-        modifiedTime: '2023-08-10T09:15:00Z',
-        category: 'small',
-        reason: 'Small document - needs review',
-        confidence: 'low',
-        aiSummary: 'This appears to be a template with placeholder text. Could be useful for future meetings or may be outdated.',
-        selected: false,
-      },
-      {
-        id: '5',
-        name: 'Old Project Backup 2021.zip',
-        mimeType: 'application/zip',
-        size: 45000,
-        modifiedTime: '2021-03-20T16:30:00Z',
-        category: 'old',
-        reason: '3 years old',
-        confidence: 'medium',
-        aiSummary: 'Archive from 2021. Contains old project files that may no longer be relevant. Consider if historical value exists.',
-        selected: false,
+  // FIXED: Load real files from Drive
+  const startScan = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      console.log('🚀 Starting AI scan for cleanable files...');
+      
+      const response = await fetch('/api/drive/cleaner/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          maxFiles: 50,
+          includeContent: true,
+          enableAI: true 
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to scan files');
       }
-    ];
-    
-    setFiles(mockFiles);
-  }, []);
+      
+      const data = await response.json();
+      console.log('✅ Scan completed:', data);
+      
+      if (data.files && data.files.length > 0) {
+        setFiles(data.files);
+        setCurrentIndex(0);
+        setDecisions([]);
+      } else {
+        setError('No cleanable files found. Your Drive is already clean! 🎉');
+      }
+    } catch (error) {
+      console.error('❌ Scan failed:', error);
+      setError(error instanceof Error ? error.message : 'Failed to scan files');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const currentFile = files[currentIndex];
   const hasMoreFiles = currentIndex < files.length;
@@ -274,32 +248,7 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
     return `${Math.floor(days / 365)} years ago`;
   };
 
-  const startScan = async () => {
-    setIsLoading(true);
-    try {
-      const response = await fetch('/api/drive/cleaner/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          maxFiles: 50,
-          includeContent: true,
-          enableAI: true 
-        }),
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setFiles(data.files);
-        setCurrentIndex(0);
-        setDecisions([]);
-      }
-    } catch (error) {
-      console.error('Failed to scan files:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+  // FIXED: Process real deletions
   const processDecisions = async () => {
     const filesToDelete = decisions
       .filter(d => d.action === 'delete')
@@ -310,26 +259,37 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
       return;
     }
 
-    const confirmed = confirm(`Delete ${filesToDelete.length} files? This cannot be undone.`);
+    const confirmed = confirm(`🗑️ Delete ${filesToDelete.length} files permanently? This cannot be undone.`);
     if (!confirmed) return;
 
     try {
+      console.log('🗑️ Deleting files:', filesToDelete);
+      
       const response = await fetch('/api/drive/cleaner/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileIds: filesToDelete }),
+        body: JSON.stringify({ 
+          fileIds: filesToDelete,
+          dryRun: false 
+        }),
       });
       
-      if (response.ok) {
-        const data = await response.json();
-        alert(`Successfully deleted ${data.deletedCount} files!`);
-        // Reset for new scan
-        setFiles([]);
-        setCurrentIndex(0);
-        setDecisions([]);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete files');
       }
+      
+      const data = await response.json();
+      console.log('✅ Deletion completed:', data);
+      
+      alert(`🎉 Successfully deleted ${data.deletedCount} files!\n\nFreed up space and cleaned your Drive.`);
+      
+      // Reset for new scan
+      setFiles([]);
+      setCurrentIndex(0);
+      setDecisions([]);
     } catch (error) {
-      console.error('Failed to delete files:', error);
+      console.error('❌ Failed to delete files:', error);
       alert('Failed to delete some files. Please try again.');
     }
   };
@@ -339,30 +299,44 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
       <div className="max-w-md mx-auto p-6">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="flex items-center justify-center space-x-3 mb-4">
-            <div className="p-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl">
-              <Sparkles className="w-8 h-8 text-white" />
+          <div className="flex items-center justify-between mb-4">
+            <button
+              onClick={onBack}
+              className="flex items-center space-x-2 text-gray-400 hover:text-white transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back</span>
+            </button>
+            <div className="flex items-center space-x-3">
+              <div className="p-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl">
+                <Sparkles className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                  Swipe to Clean
+                </h1>
+                <p className="text-gray-400 text-sm">AI-powered file cleanup</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-                Swipe to Clean
-              </h1>
-              <p className="text-gray-400 text-sm">AI-powered file cleanup</p>
-            </div>
+            <div className="w-20" />
           </div>
 
           {/* Progress Bar */}
-          <div className="w-full bg-gray-800 rounded-full h-2 mb-4">
-            <div 
-              className="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-          
-          <div className="flex justify-between text-sm text-gray-400">
-            <span>{currentIndex} of {files.length}</span>
-            <span>{decisions.filter(d => d.action === 'delete').length} to delete</span>
-          </div>
+          {files.length > 0 && (
+            <>
+              <div className="w-full bg-gray-800 rounded-full h-2 mb-4">
+                <div 
+                  className="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              
+              <div className="flex justify-between text-sm text-gray-400">
+                <span>{currentIndex} of {files.length}</span>
+                <span>{decisions.filter(d => d.action === 'delete').length} to delete</span>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Control Buttons */}
@@ -397,6 +371,23 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
             <span>{autoCleanMode ? 'Auto ON' : 'Manual'}</span>
           </button>
         </div>
+
+        {/* Error State */}
+        {error && (
+          <div className="bg-red-900/30 border border-red-700 rounded-xl p-6 mb-6">
+            <div className="flex items-center space-x-3 mb-2">
+              <AlertTriangle className="w-6 h-6 text-red-400" />
+              <h3 className="text-lg font-medium text-white">Scan Error</h3>
+            </div>
+            <p className="text-red-300">{error}</p>
+            <button
+              onClick={startScan}
+              className="mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+            >
+              Try Again
+            </button>
+          </div>
+        )}
 
         {/* Main Card Area */}
         <div className="relative h-96 mb-6">
