@@ -1,3 +1,5 @@
+'use client';
+
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { ScanResponse, CleanerContextType } from '@/types/cleaner';
 
@@ -29,7 +31,7 @@ export function CleanerProvider({ children }: { children: React.ReactNode }) {
       }
       
       // Step 2: Scan for cleanable files
-      const cleanupResponse = await fetch('/api/drive/cleaner/scan', {
+      const cleanupResponse = await fetch('/api/cleaner/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -77,7 +79,7 @@ export function CleanerProvider({ children }: { children: React.ReactNode }) {
 
   const deleteFile = useCallback(async (fileId: string): Promise<boolean> => {
     try {
-      const response = await fetch('/api/drive/cleaner/delete', {
+      const response = await fetch('/api/cleaner/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 

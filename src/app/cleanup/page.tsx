@@ -5,7 +5,7 @@ import React from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import Protected from '@/components/Protected';
 import Spinner from '@/components/Spinner';
-import { SwipeToCleanUI } from '@/components/cleaner';
+import { CleanerUI } from '@/components/cleaner';
 import { Sparkles, ArrowLeft, Heart, Zap } from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -197,7 +197,7 @@ export default function CleanupPage() {
   return (
     <Protected>
       <div className="min-h-screen bg-gradient-to-br from-pink-900 via-purple-900 to-gray-900">
-        <SwipeToCleanUI onBack={() => window.history.back()} />
+        <CleanerUI onBack={() => window.history.back()} />
       </div>
     </Protected>
   );
