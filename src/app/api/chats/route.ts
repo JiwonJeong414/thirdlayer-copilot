@@ -1,10 +1,10 @@
-// src/app/api/chats/route.ts - Updated for session-based auth
+// Retrieve, Create new chats
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@/generated/prisma';
 
 const prisma = new PrismaClient();
 
-// Get all chats for a user
+// GET /api/chats - Retrieves all chats for the authenticated user
 export async function GET(request: NextRequest) {
   try {
     // Get user ID from session cookie (via middleware)
@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
+    // Fetch chats with their first message for preview
     const chats = await prisma.chat.findMany({
       where: {
         userId: user.id,
@@ -33,11 +34,11 @@ export async function GET(request: NextRequest) {
           orderBy: {
             timestamp: 'asc',
           },
-          take: 1,
+          take: 1, // Only get the first message for preview
         },
       },
       orderBy: {
-        updatedAt: 'desc',
+        updatedAt: 'desc', // Most recent chats first
       },
     });
 
@@ -48,7 +49,8 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Create a new chat
+// POST /api/chats - Creates a new chat with optional first message
+// Creates the chat containe rin my database (new notebook)
 export async function POST(request: NextRequest) {
   try {
     const { summary, firstMessage } = await request.json();
@@ -74,6 +76,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
+    // Create new chat with optional first message
     const chat = await prisma.chat.create({
       data: {
         summary,
@@ -98,7 +101,8 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Handle Ollama chat streaming
+// PUT /api/chats - Handles streaming chat responses from Ollama
+// Actual back-and-forth conversation with the AI
 export async function PUT(request: NextRequest) {
   try {
     // Get user ID from session cookie
@@ -113,6 +117,7 @@ export async function PUT(request: NextRequest) {
     
     console.log('Ollama chat request:', JSON.stringify(body, null, 2));
     
+    // Validate required fields
     if (!body.model || !body.messages) {
       return NextResponse.json(
         { error: 'Model and messages are required' }, 
@@ -120,6 +125,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    // Check if Ollama endpoint is configured
     if (!process.env.OLLAMA_ENDPOINT) {
       return NextResponse.json(
         { error: 'Ollama endpoint not configured' }, 
@@ -127,6 +133,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    // Forward request to Ollama API
     const ollamaResponse = await fetch(`${process.env.OLLAMA_ENDPOINT}/api/chat`, {
       method: 'POST',
       headers: {
@@ -135,6 +142,7 @@ export async function PUT(request: NextRequest) {
       body: JSON.stringify(body),
     });
 
+    // Handle Ollama API errors
     if (!ollamaResponse.ok) {
       const errorText = await ollamaResponse.text();
       console.error('Ollama error:', errorText);
@@ -159,6 +167,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    // Stream the response back to the client
     return new NextResponse(ollamaResponse.body, {
       headers: {
         'Content-Type': 'application/json',
@@ -170,6 +179,7 @@ export async function PUT(request: NextRequest) {
   } catch (error) {
     console.error('Ollama chat error:', error);
     
+    // Handle connection errors specifically
     if (error instanceof TypeError && error.message.includes('fetch')) {
       return NextResponse.json(
         { error: 'Cannot connect to Ollama. Make sure it\'s running on http://localhost:11434' }, 
