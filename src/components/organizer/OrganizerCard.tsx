@@ -11,11 +11,6 @@ import {
   BarChart3, 
   Settings,
   ArrowRight,
-  FileText,
-  Users,
-  Calendar,
-  Image,
-  Archive,
   Target
 } from 'lucide-react';
 import { useOrganizer } from '../../contexts/OrganizerContext';
