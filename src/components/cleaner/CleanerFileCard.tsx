@@ -12,7 +12,7 @@ import {
   HardDrive,
   XCircle
 } from 'lucide-react';
-import { CleanableFile } from '@/types/cleaner';
+import { CleanerFileCardProps } from '@/types/cleaner';
 
 // Helper functions
 const formatFileSize = (bytes: number): string => {
@@ -32,19 +32,6 @@ const getFileAge = (modifiedTime: string): string => {
   if (days < 365) return `${Math.floor(days / 30)} months ago`;
   return `${Math.floor(days / 365)} years ago`;
 };
-
-interface CleanerFileCardProps {
-  file: CleanableFile;
-  dragOffset: { x: number; y: number };
-  isDragging: boolean;
-  onMouseDown: (e: React.MouseEvent) => void;
-  onMouseMove: (e: React.MouseEvent) => void;
-  onMouseUp: () => void;
-  onTouchStart: (e: React.TouchEvent) => void;
-  onTouchMove: (e: React.TouchEvent) => void;
-  onTouchEnd: () => void;
-  swipeHint: string | null;
-}
 
 const getFileIcon = (mimeType: string) => {
   if (mimeType.startsWith('image/')) return <Image className="w-8 h-8 text-purple-400" />;

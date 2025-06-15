@@ -1,9 +1,4 @@
-import { CleanableFile } from '@/types/cleaner';
-
-interface ScanResponse {
-  files: CleanableFile[];
-  error?: string;
-}
+import { ScanResponse } from '@/types/cleaner';
 
 /**
  * Frontend API client for the Drive Cleaner service

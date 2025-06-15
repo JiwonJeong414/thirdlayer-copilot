@@ -23,4 +23,22 @@ export interface SwipeDecision {
 
 export interface CleanerUIProps {
   onBack: () => void;
+}
+
+export interface ScanResponse {
+  files: CleanableFile[];
+  error?: string;
+}
+
+export interface CleanerFileCardProps {
+  file: CleanableFile;
+  dragOffset: { x: number; y: number };
+  isDragging: boolean;
+  onMouseDown: (e: React.MouseEvent) => void;
+  onMouseMove: (e: React.MouseEvent) => void;
+  onMouseUp: () => void;
+  onTouchStart: (e: React.TouchEvent) => void;
+  onTouchMove: (e: React.TouchEvent) => void;
+  onTouchEnd: () => void;
+  swipeHint: string | null;
 } 
