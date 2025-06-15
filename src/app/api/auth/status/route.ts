@@ -1,4 +1,4 @@
-// Check if user is authenticated and return their info
+// Checks if user is authenticated and returns their profile data
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@/generated/prisma';
 
