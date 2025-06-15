@@ -78,7 +78,7 @@ export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void
     try {
       console.log('🎯 Starting organization analysis...');
       
-      const response = await fetch('/api/drive/organize', {
+      const response = await fetch('/api/organize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -131,7 +131,7 @@ export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void
     setIsOrganizing(true);
     try {
       // FIXED: Send both IDs and names for better matching
-      const response = await fetch('/api/drive/organize', {
+      const response = await fetch('/api/organize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

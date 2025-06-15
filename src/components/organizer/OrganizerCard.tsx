@@ -107,7 +107,7 @@ export default function DriveOrganizerCard({ onActivate }: DriveOrganizerCardPro
 export class OrganizationUtils {
   static async getOrganizationStats(userId: string) {
     try {
-      const response = await fetch('/api/drive/organize');
+      const response = await fetch('/api/organize');
       if (response.ok) {
         const data = await response.json();
         return data.stats;
