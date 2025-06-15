@@ -1,14 +1,16 @@
-// src/middleware.ts - Updated for session-based auth
+// Next.js middleware for handling API route authentication
+// This middleware intercepts API requests to enforce authentication
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export async function middleware(request: NextRequest) {
-  // Skip middleware for non-API routes
+  // Only apply middleware to API routes
   if (!request.nextUrl.pathname.startsWith('/api/')) {
     return NextResponse.next();
   }
 
-  // Skip middleware for public auth endpoints
+  // List of public endpoints that don't require authentication
+  // These include auth-related endpoints and the models endpoint
   if (
     request.nextUrl.pathname === '/api/auth/verify' ||
     request.nextUrl.pathname === '/api/auth/google/url' ||
@@ -22,13 +24,14 @@ export async function middleware(request: NextRequest) {
   }
 
   try {
-    // Check for session cookie instead of Bearer token
+    // Verify authentication by checking for session cookie
     const session = request.cookies.get('session');
     
     if (!session) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
+    // Parse session data from cookie
     let sessionData;
     try {
       sessionData = JSON.parse(session.value);
@@ -36,15 +39,17 @@ export async function middleware(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid session format' }, { status: 401 });
     }
 
+    // Validate required session data
     if (!sessionData.userId || !sessionData.accessToken) {
       return NextResponse.json({ error: 'Invalid session data' }, { status: 401 });
     }
 
-    // For now, we'll pass the userId in headers for API routes that need it
-    // Later you can fetch full user data from database if needed
+    // Add user ID to request headers for downstream API routes
+    // This allows API routes to identify the authenticated user
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set('x-user-id', sessionData.userId.toString());
 
+    // Continue the request with modified headers
     return NextResponse.next({
       request: {
         headers: requestHeaders,
@@ -56,6 +61,7 @@ export async function middleware(request: NextRequest) {
   }
 }
 
+// Configure middleware to run only on API routes
 export const config = {
   matcher: [
     '/api/:path*',

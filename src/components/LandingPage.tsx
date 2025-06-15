@@ -22,12 +22,6 @@ const LandingPage = () => {
   const y2 = useTransform(scrollY, [0, 1000], [0, -400]);
   const opacity = useTransform(scrollY, [0, 300], [1, 0]);
 
-  const handleGetStarted = () => {
-    if (user) {
-      router.push('/'); // Go to dashboard
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white overflow-x-hidden">
       {/* Hero Section */}
@@ -232,21 +226,9 @@ const LandingPage = () => {
                     <h3 className="text-xl font-semibold text-green-400">
                       Welcome, {user.displayName || 'User'}!
                     </h3>
-                    <p className="text-green-300">Ready to explore the layers</p>
+                    <p className="text-green-300">Redirecting to dashboard...</p>
                   </div>
                 </div>
-                
-                <motion.button
-                  className="flex items-center space-x-2 mx-auto px-8 py-4 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full text-white font-medium text-lg hover:shadow-2xl transition-all duration-300"
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => {
-                    document.getElementById('features-section')?.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                >
-                  <span>Explore Features</span>
-                  <ChevronDown className="w-5 h-5" />
-                </motion.button>
               </motion.div>
             )}
           </AnimatePresence>
