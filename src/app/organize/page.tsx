@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import Protected from '@/components/Protected';
 import Spinner from '@/components/Spinner';
-import { DriveOrganizerDashboard } from '@/components/organizer';
+import { DriveOrganizerDashboard } from '@/components/drive';
 import { Brain, ArrowLeft, Folder, Sparkles, Target } from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';

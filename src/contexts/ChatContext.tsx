@@ -1,15 +1,59 @@
-// Manages chat state, AI model interactions, and Google Drive integration for contextual conversations
+// src/contexts/ChatContext.tsx - Updated with session-based auth
 'use client';
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import { useDrive } from './DriveContext';
-import { Chat, Message, ChatContextType } from '@/types/chat';
 
-// Create context with undefined default value
+interface User {
+  id: string;
+  email: string;
+  displayName: string;
+  photoURL: string;
+  uid: string;
+}
+
+interface Message {
+  id: string;
+  content: string;
+  sender: string;
+  timestamp: string;
+  images: string[];
+  driveContext?: {
+    fileId: string;
+    fileName: string;
+    similarity: number;
+  }[];
+}
+
+interface Chat {
+  id: string;
+  summary: string;
+  updatedAt: string;
+  messages: Message[];
+}
+
+interface ChatContextType {
+  chats: Chat[];
+  currentChat: Chat | null;
+  messages: Message[];
+  isLoading: boolean;
+  selectedModel: string;
+  availableModels: string[];
+  driveSearchEnabled: boolean;
+  setSelectedModel: (model: string) => void;
+  setDriveSearchEnabled: (enabled: boolean) => void;
+  createNewChat: (summary?: string) => Promise<string>;
+  loadChat: (chatId: string) => Promise<void>;
+  sendMessage: (content: string) => Promise<void>;
+  deleteChat: (chatId: string) => Promise<void>;
+  fetchChats: () => Promise<void>;
+  fetchModels: () => Promise<void>;
+  clearCurrentChat: () => void;
+}
+
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
-// Custom hook to use chat context
 export const useChat = () => {
   const context = useContext(ChatContext);
   if (!context) {
@@ -18,12 +62,9 @@ export const useChat = () => {
   return context;
 };
 
-// Provider component that wraps the app and makes chat state available
 export const ChatProvider = ({ children }: { children: ReactNode }) => {
   const { user, driveConnection } = useAuth();
   const { searchDocuments } = useDrive();
-  
-  // State management
   const [chats, setChats] = useState<Chat[]>([]);
   const [currentChat, setCurrentChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -32,28 +73,14 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
   const [availableModels, setAvailableModels] = useState<string[]>(['llama3.2:1b']);
   const [driveSearchEnabled, setDriveSearchEnabled] = useState(true);
 
-  // Load chats and models when user is authenticated
   useEffect(() => {
     if (user) {
-      fetchChats(); // Load user's chat history 
-      fetchModels(); // Get available AI models from Ollama
+      fetchChats();
+      fetchModels();
     }
   }, [user]);
 
-  // Fetch user's chat history
-  const fetchChats = async () => {
-    if (!user) return;
-    
-    try {
-      const response = await fetch('/api/chats');
-      const data = await response.json();
-      setChats(data.chats || []);
-    } catch (error) {
-      console.error('Error fetching chats:', error);
-    }
-  };
-
-  // Fetch available AI models from the server
+  // Simple session-based API calls (no token needed since we use cookies)
   const fetchModels = async () => {
     try {
       const response = await fetch('/api/models');
@@ -72,7 +99,18 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Create a new chat session
+  const fetchChats = async () => {
+    if (!user) return;
+    
+    try {
+      const response = await fetch('/api/chats');
+      const data = await response.json();
+      setChats(data.chats || []);
+    } catch (error) {
+      console.error('Error fetching chats:', error);
+    }
+  };
+
   const createNewChat = async (summary?: string): Promise<string> => {
     if (!user) throw new Error('User not authenticated');
 
@@ -101,7 +139,6 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Load an existing chat session
   const loadChat = async (chatId: string) => {
     try {
       const response = await fetch(`/api/chats/${chatId}`);
@@ -117,7 +154,6 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Save a message to the current chat
   const saveMessage = async (content: string, sender: string, images: string[] = [], driveContext?: any[]) => {
     if (!currentChat) return;
 
@@ -144,7 +180,6 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Send a message and handle AI response
   const sendMessage = async (content: string) => {
     if (isLoading || !user) return;
 
@@ -154,7 +189,6 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    // Create new chat if none exists
     if (!currentChat) {
       const chatSummary = content.slice(0, 50) + (content.length > 50 ? '...' : '');
       try {
@@ -165,8 +199,8 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
       }
     }
 
-    // WHEN DRIVE SEARCH IS ENABLED!!! Search drive documents if enabled 
     let driveContext: any[] = [];
+
     if (driveSearchEnabled && driveConnection.isConnected) {
       try {
         const driveResults = await searchDocuments(content, 3);
@@ -181,7 +215,6 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
       }
     }
 
-    // Create user message
     const userMessage: Message = {
       id: Date.now().toString(),
       sender: 'user',
@@ -197,8 +230,8 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     await saveMessage(content, 'user', [], driveContext);
 
     try {
-      // Prepare context-aware content
       let contextualContent = content;
+      
       if (driveContext.length > 0) {
         const driveContextText = driveContext
           .map(ctx => `Document: ${ctx.fileName}\nContent: ${ctx.content.substring(0, 500)}...`)
@@ -207,7 +240,6 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
         contextualContent = `Based on the following documents from your Google Drive:\n\n${driveContextText}\n\nUser question: ${content}`;
       }
 
-      // Prepare request to AI model
       const requestBody = {
         model: selectedModel,
         messages: [...messages, userMessage].map((msg, index) => ({
@@ -217,7 +249,8 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
         stream: true,
       };
 
-      // Send request to AI model
+      console.log('Sending chat request with model:', selectedModel);
+
       const response = await fetch('/api/chats', {
         method: 'PUT',
         headers: {
@@ -235,7 +268,6 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
         throw new Error('No response body received');
       }
 
-      // Handle streaming response
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let assistantMessage: Message = {
@@ -257,7 +289,6 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
       let done = false;
       let fullContent = '';
 
-      // Process stream chunks
       while (!done) {
         try {
           const { value, done: streamDone } = await reader.read();
@@ -300,7 +331,6 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      // Process final buffer
       if (buffer.trim()) {
         try {
           const parsed = JSON.parse(buffer);
@@ -337,7 +367,6 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Delete a chat session
   const deleteChat = async (chatId: string) => {
     try {
       const response = await fetch(`/api/chats/${chatId}`, {
@@ -361,7 +390,6 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Clear current chat session
   const clearCurrentChat = () => {
     setCurrentChat(null);
     setMessages([]);

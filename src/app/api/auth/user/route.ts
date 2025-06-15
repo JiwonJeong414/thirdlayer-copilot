@@ -1,3 +1,4 @@
+// src/app/api/auth/user/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@/generated/prisma';
 
@@ -5,13 +6,11 @@ const prisma = new PrismaClient();
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify user ID from header
     const uid = request.headers.get('uid');
     if (!uid) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    // Get user data from request
     const { email, displayName, photoURL } = await request.json();
 
     if (!email || !displayName) {
@@ -21,7 +20,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create or update user in database
+    // Upsert user - create if doesn't exist, update if exists
     const user = await prisma.user.upsert({
       where: {
         uid: uid,

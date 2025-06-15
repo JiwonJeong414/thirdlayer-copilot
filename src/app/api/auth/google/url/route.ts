@@ -1,4 +1,4 @@
-// Generates Google OAuth URL and sets CSRF state cookie
+// src/app/api/auth/google/url/route.ts - FIXED with delete scope
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import crypto from 'crypto';
