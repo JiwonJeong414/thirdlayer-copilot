@@ -41,4 +41,12 @@ export interface CleanerFileCardProps {
   onTouchMove: (e: React.TouchEvent) => void;
   onTouchEnd: () => void;
   swipeHint: string | null;
+}
+
+export interface CleanerContextType {
+  isScanning: boolean;
+  scanError: string | null;
+  scanResults: ScanResponse | null;
+  startScan: (maxFiles?: number) => Promise<void>;
+  deleteFile: (fileId: string) => Promise<boolean>;
 } 

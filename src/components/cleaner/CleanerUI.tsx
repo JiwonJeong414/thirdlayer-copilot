@@ -16,40 +16,20 @@ import {
 } from 'lucide-react';
 import { CleanerFileCard } from './CleanerFileCard';
 import { CleanableFile, SwipeDecision, CleanerUIProps } from '@/types/cleaner';
-import { CleanerApiClient } from './CleanerApiClient';
+import { useCleaner } from '@/contexts/CleanerContext';
 
 export default function CleanerUI({ onBack }: CleanerUIProps) {
-  const [files, setFiles] = useState<CleanableFile[]>([]);
+  const { isScanning, scanError, scanResults, startScan, deleteFile } = useCleaner();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [decisions, setDecisions] = useState<SwipeDecision[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [autoCleanMode, setAutoCleanMode] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   
   const cardRef = useRef<HTMLDivElement>(null);
   const startPosRef = useRef({ x: 0, y: 0 });
 
-  // Scan for cleanable files
-  const handleStartScan = async () => {
-    setIsLoading(true);
-    setError(null);
-    setFiles([]);
-    setCurrentIndex(0);
-    setDecisions([]);
-    
-    const result = await CleanerApiClient.startScan(5);
-    
-    if (result.error) {
-      setError(result.error);
-    } else {
-      setFiles(result.files);
-    }
-    
-    setIsLoading(false);
-  };
-
+  const files = scanResults?.files || [];
   const currentFile = files[currentIndex];
   const hasMoreFiles = currentIndex < files.length;
   const progress = files.length > 0 ? ((currentIndex) / files.length) * 100 : 0;
@@ -133,7 +113,7 @@ export default function CleanerUI({ onBack }: CleanerUIProps) {
     
     // If user chose to delete, delete it immediately
     if (action === 'delete') {
-      const success = await CleanerApiClient.deleteFile(currentFile.id);
+      const success = await deleteFile(currentFile.id);
       if (success) {
         console.log(`✅ Successfully deleted: ${currentFile.name}`);
       }
@@ -157,6 +137,12 @@ export default function CleanerUI({ onBack }: CleanerUIProps) {
     if (Math.abs(x) < 50) return null;
     
     return x > 0 ? 'KEEP' : 'DELETE';
+  };
+
+  const handleStartScan = () => {
+    setCurrentIndex(0);
+    setDecisions([]);
+    startScan(5);
   };
 
   return (
@@ -253,20 +239,20 @@ export default function CleanerUI({ onBack }: CleanerUIProps) {
         >
           <motion.button
             onClick={handleStartScan}
-            disabled={isLoading}
+            disabled={isScanning}
             className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 disabled:from-gray-600 disabled:to-gray-700 rounded-xl transition-all duration-300 shadow-lg"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
-            {isLoading ? (
+            {isScanning ? (
               <>
                 <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>Scanning Drive...</span>
+                <span>Scanning...</span>
               </>
             ) : (
               <>
-                <Brain className="w-4 h-4" />
-                <span>Find 5 Files</span>
+                <Sparkles className="w-4 h-4" />
+                <span>Start Scan</span>
               </>
             )}
           </motion.button>
@@ -288,18 +274,18 @@ export default function CleanerUI({ onBack }: CleanerUIProps) {
 
         {/* Error State */}
         <AnimatePresence>
-          {error && (
+          {scanError && (
             <motion.div 
               className="bg-red-900/40 border border-red-500/50 rounded-xl p-6 mb-6 backdrop-blur-sm"
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
             >
-              <div className="flex items-center space-x-3 mb-2">
-                <AlertTriangle className="w-6 h-6 text-red-400" />
+              <div className="flex items-center space-x-3 mb-3">
+                <AlertTriangle className="w-5 h-5 text-red-400" />
                 <h3 className="text-lg font-medium text-white">Scan Error</h3>
               </div>
-              <p className="text-red-300">{error}</p>
+              <p className="text-red-300">{scanError}</p>
               <motion.button
                 onClick={handleStartScan}
                 className="mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
@@ -334,7 +320,7 @@ export default function CleanerUI({ onBack }: CleanerUIProps) {
                   <h3 className="text-xl font-medium text-white mb-2">Batch Complete!</h3>
                   <p className="text-pink-300 mb-4">
                     {decisions.length === 0 
-                      ? 'Click "Find 5 Files" to scan another batch of 5 files to clean.'
+                      ? 'Click "Start Scan" to scan another batch of 5 files to clean.'
                       : `Reviewed ${decisions.length} files in this batch.`
                     }
                   </p>
@@ -344,7 +330,7 @@ export default function CleanerUI({ onBack }: CleanerUIProps) {
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                   >
-                    Find Next 5 Files
+                    Start New Scan
                   </motion.button>
                 </div>
               </motion.div>

@@ -15,13 +15,6 @@ import {
   Settings,
   HelpCircle,
   LogOut,
-  FileText,
-  RefreshCw,
-  CheckCircle,
-  Loader2,
-  X,
-  Zap,
-  Sparkles,
   ToggleLeft,
   ToggleRight,
   ArrowLeft
