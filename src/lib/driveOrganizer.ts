@@ -1,4 +1,4 @@
-// src/lib/driveOrganizer.ts - AI-powered folder organization
+// src/lib/driveOrganizer.ts - AI-powered folder organization - UPDATED
 import { GoogleDriveService } from '@/lib/googleDrive';
 import { VectorService } from '@/lib/vectorService';
 import { PrismaClient } from '@/generated/prisma';
@@ -131,6 +131,141 @@ export class DriveOrganizerService {
     }
 
     return suggestion;
+  }
+
+  // ===================================================================
+  // EXECUTE SELECTED CLUSTERS - NEW METHOD
+  // ===================================================================
+  
+  async executeSelectedClusters(
+    userId: string,
+    selectedClusters: FileCluster[],
+    options: { createFolders: boolean } = { createFolders: true }
+  ): Promise<OrganizationSuggestion> {
+    console.log(`🚀 Executing organization for ${selectedClusters.length} selected clusters`);
+    
+    // Get the drive client from the service
+    const drive = this.driveService.getDriveClient();
+    if (!drive) {
+      throw new Error('Failed to access Google Drive client');
+    }
+
+    let successfulClusters = 0;
+    let totalFilesProcessed = 0;
+    const results = [];
+
+    // Create folders and move files for each selected cluster
+    for (const cluster of selectedClusters) {
+      try {
+        console.log(`📁 Processing cluster: ${cluster.name} (${cluster.files.length} files)`);
+
+        // Create category folder first
+        const categoryFolderResponse = await drive.files.create({
+          requestBody: {
+            name: this.capitalizeWords(cluster.category),
+            mimeType: 'application/vnd.google-apps.folder',
+          },
+        });
+
+        const categoryFolderId = categoryFolderResponse.data.id!;
+        console.log(`📁 Created category folder: ${this.capitalizeWords(cluster.category)} (${categoryFolderId})`);
+
+        // Create subfolder within category
+        const subfolderResponse = await drive.files.create({
+          requestBody: {
+            name: cluster.suggestedFolderName,
+            mimeType: 'application/vnd.google-apps.folder',
+            parents: [categoryFolderId]
+          },
+        });
+
+        const subfolderId = subfolderResponse.data.id!;
+        console.log(`📁 Created subfolder: ${cluster.suggestedFolderName} in ${this.capitalizeWords(cluster.category)}`);
+
+        let filesProcessedInCluster = 0;
+
+        // Move files to folder
+        for (const file of cluster.files) {
+          if (file.confidence > 0.7) { // Only move high-confidence files
+            try {
+              // First get the current file metadata to check if it's already a shortcut
+              const fileMetadata = await drive.files.get({
+                fileId: file.fileId,
+                fields: 'mimeType,shortcutDetails'
+              });
+
+              // Skip if this is already a shortcut
+              if (fileMetadata.data.mimeType === 'application/vnd.google-apps.shortcut') {
+                console.log(`⏭️  Skipping ${file.fileName} - already a shortcut`);
+                continue;
+              }
+
+              // Create a shortcut in the target folder
+              const shortcutMetadata = {
+                name: file.fileName,
+                mimeType: 'application/vnd.google-apps.shortcut',
+                parents: [subfolderId],
+                shortcutDetails: {
+                  targetId: file.fileId,
+                  targetMimeType: fileMetadata.data.mimeType || 'application/octet-stream'
+                }
+              };
+
+              const shortcut = await drive.files.create({
+                requestBody: shortcutMetadata,
+                fields: 'id,shortcutDetails'
+              });
+
+              console.log(`✅ Created shortcut for ${file.fileName} in ${cluster.suggestedFolderName} (${this.capitalizeWords(cluster.category)})`);
+              filesProcessedInCluster++;
+              totalFilesProcessed++;
+            } catch (error) {
+              console.error(`❌ Failed to create shortcut for ${file.fileName}:`, error);
+              // Continue with next file instead of breaking the loop
+              continue;
+            }
+          } else {
+            console.log(`⚠️ Skipping ${file.fileName} - low confidence (${file.confidence})`);
+          }
+        }
+
+        results.push({
+          clusterId: cluster.id,
+          clusterName: cluster.name,
+          folderId: subfolderId,
+          folderName: cluster.suggestedFolderName,
+          filesProcessed: filesProcessedInCluster,
+          totalFiles: cluster.files.length
+        });
+
+        successfulClusters++;
+        console.log(`✅ Completed cluster ${cluster.name}: ${filesProcessedInCluster}/${cluster.files.length} files processed`);
+
+      } catch (error) {
+        console.error(`❌ Failed to process cluster ${cluster.name}:`, error);
+        // Continue with next cluster instead of breaking the loop
+        continue;
+      }
+    }
+
+    console.log(`🎉 Organization execution complete: ${successfulClusters}/${selectedClusters.length} clusters, ${totalFilesProcessed} files processed`);
+
+    return {
+      clusters: selectedClusters,
+      summary: {
+        totalFiles: totalFilesProcessed,
+        clustersCreated: successfulClusters,
+        estimatedSavings: successfulClusters * 0.5, // Rough estimate
+        confidence: selectedClusters.reduce((sum, cluster) => 
+          sum + (cluster.files.reduce((cSum, file) => cSum + file.confidence, 0) / cluster.files.length), 0
+        ) / selectedClusters.length
+      },
+      actions: {
+        createFolders: true,
+        moveFiles: true,
+        addLabels: false
+      }
+    };
   }
 
   // ===================================================================
@@ -414,121 +549,23 @@ DESCRIPTION: [brief description]`;
   }
 
   // ===================================================================
-  // EXECUTION METHODS
+  // EXECUTION METHODS (Original method kept for compatibility)
   // ===================================================================
   
   async executeOrganization(
     userId: string,
     options: OrganizationOptions
   ): Promise<OrganizationSuggestion> {
-    // Get the drive client from the service
-    const drive = this.driveService.getDriveClient();
-    if (!drive) {
-      throw new Error('Failed to access Google Drive client');
-    }
-
-    // Create folders and move files
-    for (const cluster of options.clusters) {
-      try {
-        // Skip if cluster is not selected
-        if (!cluster.selected) {
-          console.log(`⏭️ Skipping unselected cluster: ${cluster.name}`);
-          continue;
-        }
-
-        // Create category folder first
-        const categoryFolderResponse = await drive.files.create({
-          requestBody: {
-            name: this.capitalizeWords(cluster.category),
-            mimeType: 'application/vnd.google-apps.folder',
-          },
-        });
-
-        const categoryFolderId = categoryFolderResponse.data.id!;
-        console.log(`📁 Created category folder: ${this.capitalizeWords(cluster.category)} (${categoryFolderId})`);
-
-        // Create subfolder within category
-        const subfolderResponse = await drive.files.create({
-          requestBody: {
-            name: cluster.suggestedFolderName,
-            mimeType: 'application/vnd.google-apps.folder',
-            parents: [categoryFolderId]
-          },
-        });
-
-        const subfolderId = subfolderResponse.data.id!;
-        console.log(`📁 Created subfolder: ${cluster.suggestedFolderName} in ${this.capitalizeWords(cluster.category)}`);
-
-        // Move files to folder
-        for (const file of cluster.files) {
-          if (file.confidence > 0.7) { // Only move high-confidence files
-            try {
-              // First get the current file metadata to check if it's already a shortcut
-              const fileMetadata = await drive.files.get({
-                fileId: file.fileId,
-                fields: 'mimeType,shortcutDetails'
-              });
-
-              // Skip if this is already a shortcut
-              if (fileMetadata.data.mimeType === 'application/vnd.google-apps.shortcut') {
-                console.log(`⏭️  Skipping ${file.fileName} - already a shortcut`);
-                continue;
-              }
-
-              // Create a shortcut in the target folder
-              const shortcutMetadata = {
-                name: file.fileName,
-                mimeType: 'application/vnd.google-apps.shortcut',
-                parents: [subfolderId],
-                shortcutDetails: {
-                  targetId: file.fileId,
-                  targetMimeType: fileMetadata.data.mimeType || 'application/octet-stream'
-                }
-              };
-
-              const shortcut = await drive.files.create({
-                requestBody: shortcutMetadata,
-                fields: 'id,shortcutDetails'
-              });
-
-              console.log(`✅ Created shortcut for ${file.fileName} in ${cluster.suggestedFolderName} (${this.capitalizeWords(cluster.category)})`);
-            } catch (error) {
-              console.error(`❌ Failed to create shortcut for ${file.fileName}:`, error);
-              // Continue with next file instead of breaking the loop
-              continue;
-            }
-          }
-        }
-      } catch (error) {
-        console.error(`❌ Failed to process cluster ${cluster.name}:`, error);
-        // Continue with next cluster instead of breaking the loop
-        continue;
-      }
-    }
-
-    return {
-      clusters: options.clusters,
-      summary: {
-        totalFiles: options.clusters.reduce((sum, c) => sum + c.files.length, 0),
-        clustersCreated: options.clusters.length,
-        estimatedSavings: options.clusters.length * 0.5, // Rough estimate
-        confidence: options.clusters.reduce((sum, c) => 
-          sum + (c.files.reduce((fSum, f) => fSum + f.confidence, 0) / c.files.length), 0
-        ) / options.clusters.length
-      },
-      actions: {
-        createFolders: true,
-        moveFiles: true,
-        addLabels: false
-      }
-    };
+    // Delegate to executeSelectedClusters for consistency
+    return this.executeSelectedClusters(userId, options.clusters, { createFolders: true });
   }
 
   // ===================================================================
   // HELPER METHODS
   // ===================================================================
   
-  private async getFileDataWithEmbeddings(userId: string): Promise<FileWithEmbedding[]> {
+  // FIXED: Make this method public so API can use it
+  async getFileDataWithEmbeddings(userId: string): Promise<FileWithEmbedding[]> {
     const embeddings = await prisma.documentEmbedding.findMany({
       where: { userId },
       select: {

@@ -109,12 +109,16 @@ export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void
   const executeOrganization = async () => {
     if (!suggestion) return;
     
-    const selectedClusterData = suggestion.clusters.filter(c => selectedClusters.has(c.id));
+    // FIXED: Properly filter clusters based on user selection
+    const selectedClusterIds = Array.from(selectedClusters);
+    const selectedClusterData = suggestion.clusters.filter(c => selectedClusterIds.includes(c.id));
     
     if (selectedClusterData.length === 0) {
       alert('Please select at least one cluster to organize');
       return;
     }
+
+    console.log('🎯 Selected clusters for execution:', selectedClusterData.map(c => ({ id: c.id, name: c.name })));
 
     const confirmed = confirm(
       `🚀 Create ${selectedClusterData.length} folders and organize ${
@@ -126,6 +130,7 @@ export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void
 
     setIsOrganizing(true);
     try {
+      // FIXED: Send both IDs and names for better matching
       const response = await fetch('/api/drive/organize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -135,24 +140,42 @@ export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void
           minClusterSize,
           createFolders: true,
           dryRun: false,
-          clusters: selectedClusterData.map(cluster => ({
-            ...cluster,
-            selected: true
+          selectedClusters: selectedClusterIds, // Send the selected cluster IDs
+          selectedClusterNames: selectedClusterData.map(c => c.name), // Also send names for fallback matching
+          selectedClusterInfo: selectedClusterData.map(c => ({ // Send full info for debugging
+            id: c.id,
+            name: c.name,
+            fileCount: c.files.length,
+            category: c.category,
+            files: c.files.map(f => ({
+              fileId: f.fileId,
+              fileName: f.fileName,
+              confidence: f.confidence,
+              keywords: f.keywords
+            }))
           }))
         }),
       });
       
       if (!response.ok) {
-        throw new Error('Organization execution failed');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Organization execution failed');
       }
       
-      alert('🎉 Organization completed successfully! Check your Google Drive for the new folder structure.');
+      const result = await response.json();
+      
+      alert(`🎉 Organization completed successfully! 
+      
+Processed ${result.summary?.totalFiles || selectedClusterData.reduce((sum, c) => sum + c.files.length, 0)} files across ${selectedClusterData.length} folders.
+
+Check your Google Drive for the new folder structure.`);
+      
       setSuggestion(null);
       setSelectedClusters(new Set());
       
     } catch (error) {
       console.error('Organization failed:', error);
-      alert('Failed to organize files. Please try again.');
+      alert(`Failed to organize files: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
     } finally {
       setIsOrganizing(false);
     }
@@ -166,6 +189,7 @@ export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void
       } else {
         next.add(clusterId);
       }
+      console.log('🔄 Updated cluster selection:', Array.from(next));
       return next;
     });
   };
@@ -175,8 +199,10 @@ export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void
     
     if (selectedClusters.size === suggestion.clusters.length) {
       setSelectedClusters(new Set());
+      console.log('🔄 Deselected all clusters');
     } else {
       setSelectedClusters(new Set(suggestion.clusters.map(c => c.id)));
+      console.log('🔄 Selected all clusters:', suggestion.clusters.map(c => c.name));
     }
   };
 
@@ -358,6 +384,13 @@ export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void
                   
                   <span className="text-sm text-gray-400">
                     {selectedClusters.size} of {suggestion.clusters.length} clusters selected
+                    {selectedClusters.size > 0 && (
+                      <span className="ml-2 text-green-400">
+                        ({suggestion.clusters
+                          .filter(c => selectedClusters.has(c.id))
+                          .reduce((sum, c) => sum + c.files.length, 0)} files)
+                      </span>
+                    )}
                   </span>
                 </div>
 
@@ -382,7 +415,7 @@ export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void
                     ) : (
                       <>
                         <FolderPlus className="w-4 h-4" />
-                        <span>Execute Organization</span>
+                        <span>Execute Organization ({selectedClusters.size} clusters)</span>
                       </>
                     )}
                   </button>
@@ -397,7 +430,7 @@ export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void
                   key={cluster.id}
                   className={`bg-gray-800/50 backdrop-blur-sm border rounded-xl p-6 transition-all cursor-pointer ${
                     selectedClusters.has(cluster.id)
-                      ? 'border-green-500 ring-2 ring-green-500/50'
+                      ? 'border-green-500 ring-2 ring-green-500/50 bg-green-900/10'
                       : 'border-gray-700 hover:border-gray-600'
                   }`}
                   onClick={() => toggleCluster(cluster.id)}
@@ -417,13 +450,18 @@ export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void
                       </div>
                     </div>
                     
-                    <input
-                      type="checkbox"
-                      checked={selectedClusters.has(cluster.id)}
-                      onChange={() => toggleCluster(cluster.id)}
-                      className="text-green-500 bg-gray-700 border-gray-600"
-                      onClick={(e) => e.stopPropagation()}
-                    />
+                    <div className="flex items-center space-x-2">
+                      {selectedClusters.has(cluster.id) && (
+                        <CheckCircle className="w-5 h-5 text-green-400" />
+                      )}
+                      <input
+                        type="checkbox"
+                        checked={selectedClusters.has(cluster.id)}
+                        onChange={() => toggleCluster(cluster.id)}
+                        className="text-green-500 bg-gray-700 border-gray-600 w-5 h-5"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
                   </div>
 
                   {/* Description */}
@@ -506,8 +544,15 @@ export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4" />
                     <h3 className="text-lg font-bold text-white mb-2">Organizing Your Drive</h3>
                     <p className="text-gray-400">
-                      Creating folders and moving files. This may take a few moments...
+                      Creating {selectedClusters.size} folders and organizing{' '}
+                      {suggestion.clusters
+                        .filter(c => selectedClusters.has(c.id))
+                        .reduce((sum, c) => sum + c.files.length, 0)}{' '}
+                      files...
                     </p>
+                    <div className="mt-4 text-sm text-gray-500">
+                      This may take a few moments...
+                    </div>
                   </div>
                 </div>
               </div>
