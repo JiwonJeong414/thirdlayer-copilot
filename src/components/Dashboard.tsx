@@ -1,4 +1,4 @@
-// Main dashboard component with AI features and Google Drive integration
+// src/components/Dashboard.tsx - Updated with separate links for AI features
 'use client';
 
 import React, { useState } from 'react';
@@ -27,12 +27,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useDrive } from '@/contexts/DriveContext';
 
 const Dashboard = () => {
-  // Auth and drive context hooks
   const { user, signOut, driveConnection } = useAuth();
   const { indexedFiles } = useDrive();
   const router = useRouter();
-  
-  // State management
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   
   // Sync modal states
@@ -41,7 +38,7 @@ const Dashboard = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncResults, setSyncResults] = useState<any>(null);
 
-  // Animated logo component with layered design
+  // Animated Drive logo layers
   const DriveLogoAnimation = () => (
     <motion.div 
       className="relative w-40 h-40 mx-auto mb-8"
@@ -107,7 +104,7 @@ const Dashboard = () => {
     </motion.div>
   );
 
-  // Feature definitions for main dashboard cards
+  // Updated feature definitions with separate pages
   const features = [
     {
       id: 'chat',
@@ -162,7 +159,7 @@ const Dashboard = () => {
     }
   ];
 
-  // Quick action buttons for common tasks
+  // Quick actions with updated links
   const quickActions = [
     { icon: Plus, label: 'New Chat', action: () => router.push('/chat') },
     { icon: Search, label: 'Search Files', action: () => router.push('/chat') },
@@ -172,7 +169,7 @@ const Dashboard = () => {
     { icon: Settings, label: 'Settings', action: () => {} },
   ];
 
-  // Handle Google Drive sync operation
+  // Handle sync functionality
   const handleSync = async (limit: number) => {
     setIsSyncing(true);
     setSyncResults(null);
@@ -207,7 +204,7 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-      {/* Header with user profile and navigation */}
+      {/* Header */}
       <header className="border-b border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
@@ -269,9 +266,9 @@ const Dashboard = () => {
         </div>
       </header>
 
-      {/* Main dashboard content */}
+      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 py-12">
-        {/* Welcome section with animated logo */}
+        {/* Welcome Section */}
         <motion.div 
           className="text-center mb-16"
           initial={{ opacity: 0, y: 20 }}
@@ -299,7 +296,7 @@ const Dashboard = () => {
           </motion.p>
         </motion.div>
 
-        {/* Drive connection status indicator */}
+        {/* Drive Connection Status */}
         <motion.div 
           className="mb-12"
           initial={{ opacity: 0, scale: 0.95 }}
@@ -329,7 +326,7 @@ const Dashboard = () => {
           </div>
         </motion.div>
 
-        {/* Main feature cards grid */}
+        {/* Feature Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
           {features.map((feature, index) => {
             const Icon = feature.icon;
@@ -410,7 +407,7 @@ const Dashboard = () => {
           })}
         </div>
 
-        {/* Quick actions toolbar */}
+        {/* Quick Actions - Updated Grid */}
         <motion.div 
           className="bg-white dark:bg-gray-800 rounded-3xl border border-gray-200 dark:border-gray-700 p-8 mb-8"
           initial={{ opacity: 0, y: 30 }}
@@ -442,7 +439,7 @@ const Dashboard = () => {
           </div>
         </motion.div>
 
-        {/* Recent activity stats */}
+        {/* Recent Activity */}
         <motion.div 
           className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/10 dark:to-purple-900/10 rounded-3xl border border-blue-200 dark:border-blue-800 p-8"
           initial={{ opacity: 0, y: 30 }}
@@ -470,7 +467,7 @@ const Dashboard = () => {
         </motion.div>
       </main>
 
-      {/* Sync modal for Google Drive integration */}
+      {/* Sync Modal */}
       {showSyncModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-md border border-gray-200 dark:border-gray-700">

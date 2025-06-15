@@ -5,7 +5,7 @@ import React from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import Protected from '@/components/Protected';
 import Spinner from '@/components/Spinner';
-import { SwipeToCleanUI } from '@/components/cleaner';
+import { SwipeToCleanUI } from '@/components/drive';
 import { Sparkles, ArrowLeft, Heart, Zap } from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';

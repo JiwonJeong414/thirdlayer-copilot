@@ -1,18 +1,7 @@
-/**
- * VectorService handles document embedding and semantic search functionality.
- * 
- * Key features:
- * - Converts text documents into vector embeddings using Ollama
- * - Splits documents into overlapping chunks for better context
- * - Stores and retrieves document embeddings from database
- * - Performs semantic search using cosine similarity
- * - Supports both structured (markdown, code) and plain text documents
- */
-
+// src/lib/vectorService.ts - DEBUGGING VERSION to fix Prisma errors
 import { prisma } from '@/lib/prisma';
 
 export class VectorService {
-  // Configuration constants for text chunking and embedding
   private static CHUNK_SIZE = 800;
   private static CHUNK_OVERLAP = 150;
   private static EMBEDDING_MODEL = 'mxbai-embed-large';
@@ -20,7 +9,6 @@ export class VectorService {
   private static MIN_DOCUMENT_SIZE = 20;
   private static RELEVANCE_THRESHOLD = 0.3;
 
-  // Generates embedding vector for given text using Ollama API
   static async generateEmbedding(text: string, context?: { fileName?: string, docType?: string }): Promise<number[]> {
     try {
       if (!process.env.OLLAMA_ENDPOINT) {
@@ -65,7 +53,6 @@ export class VectorService {
     }
   }
 
-  // Splits text into overlapping chunks for better context preservation
   static splitTextIntoChunks(text: string, fileName: string): { content: string; metadata: any }[] {
     const chunks: { content: string; metadata: any }[] = [];
     
@@ -91,7 +78,6 @@ export class VectorService {
     }
   }
 
-  // Detects if document has structured format (headers, lists, code)
   private static detectDocumentType(fileName: string, text: string): string {
     const hasHeaders = /^#{1,6}\s/.test(text) || /^\d+\.\s/.test(text);
     const hasList = /^[\*\-\+]\s/m.test(text) || /^\d+\.\s/m.test(text);
@@ -103,7 +89,6 @@ export class VectorService {
     return 'plain';
   }
 
-  // Chunks structured documents while preserving section context
   private static chunkStructuredDocument(text: string, fileName: string): { content: string; metadata: any }[] {
     const chunks: { content: string; metadata: any }[] = [];
     const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim().length > 0);
@@ -149,7 +134,6 @@ export class VectorService {
     return chunks;
   }
 
-  // Chunks plain text documents using sentence boundaries
   private static chunkPlainText(text: string, fileName: string): { content: string; metadata: any }[] {
     const chunks: { content: string; metadata: any }[] = [];
     const sentences = this.splitIntoSentences(text);
@@ -191,7 +175,6 @@ export class VectorService {
     return chunks;
   }
 
-  // Splits text into sentences using punctuation and capitalization
   private static splitIntoSentences(text: string): string[] {
     return text
       .split(/(?<=[.!?])\s+(?=[A-Z])/)
@@ -199,13 +182,12 @@ export class VectorService {
       .map(s => s.trim());
   }
 
-  // Extracts section headers from structured text
   private static extractSection(text: string): string | undefined {
     const headerMatch = text.match(/^#{1,6}\s+(.+)$/m) || text.match(/^(\d+\.?\s+[A-Z][^.\n]+)/m);
     return headerMatch ? headerMatch[1].trim() : undefined;
   }
 
-  // Stores document embeddings in database with duplicate checking
+  // FIXED: Better error handling and debugging for Prisma issues
   static async storeDocumentEmbeddings(
     userId: string,
     fileId: string,
@@ -335,7 +317,7 @@ export class VectorService {
     }
   }
 
-  // Searches for similar documents using cosine similarity and relevance scoring
+  // FIXED: Better error handling for search
   static async searchSimilarDocuments(
     userId: string,
     query: string,
@@ -401,7 +383,6 @@ export class VectorService {
     }
   }
 
-  // Calculates relevance score based on similarity, keyword matches, and metadata
   private static calculateRelevanceScore(
     query: string, 
     content: string, 
@@ -434,7 +415,6 @@ export class VectorService {
     return Math.min(score, 1.0);
   }
 
-  // Computes cosine similarity between two vectors
   static cosineSimilarity(vecA: number[], vecB: number[]): number {
     if (vecA.length !== vecB.length) {
       throw new Error(`Vector length mismatch: ${vecA.length} vs ${vecB.length}`);
@@ -460,7 +440,7 @@ export class VectorService {
     return dotProduct / (normA * normB);
   }
 
-  // Retrieves list of indexed files with metadata for a user
+  // FIXED: Better error handling for getUserIndexedFiles
   static async getUserIndexedFiles(userId: string): Promise<{
     fileId: string;
     fileName: string;
@@ -528,7 +508,6 @@ export class VectorService {
     }
   }
 
-  // Verifies if the required embedding model is available in Ollama
   static async checkEmbeddingModel(): Promise<boolean> {
     try {
       if (!process.env.OLLAMA_ENDPOINT) {
