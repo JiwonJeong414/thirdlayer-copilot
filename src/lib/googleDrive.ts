@@ -61,6 +61,10 @@ export class GoogleDriveService {
     });
   }
 
+  getDriveClient(): drive_v3.Drive {
+    return this.drive;
+  }
+
   async listFiles(connection: DriveConnection): Promise<drive_v3.Schema$File[]> {
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,

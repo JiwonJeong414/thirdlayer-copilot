@@ -135,7 +135,10 @@ export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void
           minClusterSize,
           createFolders: true,
           dryRun: false,
-          selectedClusters: Array.from(selectedClusters)
+          clusters: selectedClusterData.map(cluster => ({
+            ...cluster,
+            selected: true
+          }))
         }),
       });
       

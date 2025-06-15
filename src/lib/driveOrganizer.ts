@@ -11,14 +11,15 @@ export interface FileCluster {
   name: string;
   description: string;
   color: string;
-  files: {
+  files: Array<{
     fileId: string;
     fileName: string;
     confidence: number;
     keywords: string[];
-  }[];
+  }>;
   suggestedFolderName: string;
   category: 'work' | 'personal' | 'media' | 'documents' | 'archive' | 'mixed';
+  selected: boolean;
 }
 
 export interface OrganizationSuggestion {
@@ -26,7 +27,7 @@ export interface OrganizationSuggestion {
   summary: {
     totalFiles: number;
     clustersCreated: number;
-    estimatedSavings: number; // in hours
+    estimatedSavings: number;
     confidence: number;
   };
   actions: {
@@ -36,8 +37,21 @@ export interface OrganizationSuggestion {
   };
 }
 
+interface OrganizationOptions {
+  method: 'folders' | 'clustering' | 'hybrid';
+  maxClusters: number;
+  minClusterSize: number;
+  createFolders: boolean;
+  dryRun: boolean;
+  clusters: FileCluster[];
+}
+
 export class DriveOrganizerService {
-  constructor(private driveService: GoogleDriveService) {}
+  private driveService: GoogleDriveService;
+
+  constructor(driveService: GoogleDriveService) {
+    this.driveService = driveService;
+  }
 
   // ===================================================================
   // MAIN ORGANIZATION WORKFLOW
@@ -106,7 +120,14 @@ export class DriveOrganizerService {
 
     // Execute organization if not dry run
     if (!dryRun && createFolders) {
-      await this.executeOrganization(userId, suggestion);
+      await this.executeOrganization(userId, {
+        method,
+        maxClusters,
+        minClusterSize,
+        createFolders,
+        dryRun,
+        clusters
+      });
     }
 
     return suggestion;
@@ -156,7 +177,8 @@ export class DriveOrganizerService {
           fileName: f.fileName,
           confidence: 0.8, // K-means confidence
           keywords: theme.keywords
-        }))
+        })),
+        selected: true
       });
     }
 
@@ -264,7 +286,8 @@ export class DriveOrganizerService {
           fileName: f.fileName,
           confidence: 0.9, // High confidence for existing structure
           keywords: theme.keywords
-        }))
+        })),
+        selected: true
       });
     }
 
@@ -394,87 +417,111 @@ DESCRIPTION: [brief description]`;
   // EXECUTION METHODS
   // ===================================================================
   
-  async executeOrganization(userId: string, suggestion: OrganizationSuggestion): Promise<void> {
-    console.log(`🚀 Executing organization for ${suggestion.clusters.length} clusters`);
-
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: { driveConnection: true },
-    });
-
-    if (!user?.driveConnection) {
-      throw new Error('Drive connection not found');
+  async executeOrganization(
+    userId: string,
+    options: OrganizationOptions
+  ): Promise<OrganizationSuggestion> {
+    // Get the drive client from the service
+    const drive = this.driveService.getDriveClient();
+    if (!drive) {
+      throw new Error('Failed to access Google Drive client');
     }
 
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      process.env.GOOGLE_REDIRECT_URI
-    );
-
-    oauth2Client.setCredentials({
-      access_token: user.driveConnection.accessToken,
-      refresh_token: user.driveConnection.refreshToken,
-    });
-
-    const drive = google.drive({ version: 'v3', auth: oauth2Client });
-
     // Create folders and move files
-    for (const cluster of suggestion.clusters) {
+    for (const cluster of options.clusters) {
       try {
-        // Create folder
-        const folderResponse = await drive.files.create({
+        // Skip if cluster is not selected
+        if (!cluster.selected) {
+          console.log(`⏭️ Skipping unselected cluster: ${cluster.name}`);
+          continue;
+        }
+
+        // Create category folder first
+        const categoryFolderResponse = await drive.files.create({
           requestBody: {
-            name: cluster.suggestedFolderName,
+            name: this.capitalizeWords(cluster.category),
             mimeType: 'application/vnd.google-apps.folder',
           },
         });
 
-        const folderId = folderResponse.data.id!;
-        console.log(`📁 Created folder: ${cluster.suggestedFolderName} (${folderId})`);
+        const categoryFolderId = categoryFolderResponse.data.id!;
+        console.log(`📁 Created category folder: ${this.capitalizeWords(cluster.category)} (${categoryFolderId})`);
+
+        // Create subfolder within category
+        const subfolderResponse = await drive.files.create({
+          requestBody: {
+            name: cluster.suggestedFolderName,
+            mimeType: 'application/vnd.google-apps.folder',
+            parents: [categoryFolderId]
+          },
+        });
+
+        const subfolderId = subfolderResponse.data.id!;
+        console.log(`📁 Created subfolder: ${cluster.suggestedFolderName} in ${this.capitalizeWords(cluster.category)}`);
 
         // Move files to folder
         for (const file of cluster.files) {
           if (file.confidence > 0.7) { // Only move high-confidence files
             try {
-              // First get the current file metadata to check parents
+              // First get the current file metadata to check if it's already a shortcut
               const fileMetadata = await drive.files.get({
                 fileId: file.fileId,
-                fields: 'parents'
+                fields: 'mimeType,shortcutDetails'
               });
 
-              // Remove old parents and add new parent
-              await drive.files.update({
-                fileId: file.fileId,
-                removeParents: fileMetadata.data.parents?.join(','),
-                addParents: folderId,
-                fields: 'id, parents',
+              // Skip if this is already a shortcut
+              if (fileMetadata.data.mimeType === 'application/vnd.google-apps.shortcut') {
+                console.log(`⏭️  Skipping ${file.fileName} - already a shortcut`);
+                continue;
+              }
+
+              // Create a shortcut in the target folder
+              const shortcutMetadata = {
+                name: file.fileName,
+                mimeType: 'application/vnd.google-apps.shortcut',
+                parents: [subfolderId],
+                shortcutDetails: {
+                  targetId: file.fileId,
+                  targetMimeType: fileMetadata.data.mimeType || 'application/octet-stream'
+                }
+              };
+
+              const shortcut = await drive.files.create({
+                requestBody: shortcutMetadata,
+                fields: 'id,shortcutDetails'
               });
-              console.log(`📄 Moved ${file.fileName} to ${cluster.suggestedFolderName}`);
+
+              console.log(`✅ Created shortcut for ${file.fileName} in ${cluster.suggestedFolderName} (${this.capitalizeWords(cluster.category)})`);
             } catch (error) {
-              console.error(`❌ Failed to move ${file.fileName}:`, error);
+              console.error(`❌ Failed to create shortcut for ${file.fileName}:`, error);
+              // Continue with next file instead of breaking the loop
+              continue;
             }
           }
         }
-
-        // Log organization activity
-        await prisma.organizationActivity.create({
-          data: {
-            userId: user.id,
-            clusterName: cluster.name,
-            folderName: cluster.suggestedFolderName,
-            filesMoved: cluster.files.filter(f => f.confidence > 0.7).length,
-            method: 'ai_clustering',
-            timestamp: new Date(),
-          },
-        });
-
       } catch (error) {
-        console.error(`❌ Failed to create cluster ${cluster.name}:`, error);
+        console.error(`❌ Failed to process cluster ${cluster.name}:`, error);
+        // Continue with next cluster instead of breaking the loop
+        continue;
       }
     }
 
-    console.log(`✅ Organization execution completed`);
+    return {
+      clusters: options.clusters,
+      summary: {
+        totalFiles: options.clusters.reduce((sum, c) => sum + c.files.length, 0),
+        clustersCreated: options.clusters.length,
+        estimatedSavings: options.clusters.length * 0.5, // Rough estimate
+        confidence: options.clusters.reduce((sum, c) => 
+          sum + (c.files.reduce((fSum, f) => fSum + f.confidence, 0) / c.files.length), 0
+        ) / options.clusters.length
+      },
+      actions: {
+        createFolders: true,
+        moveFiles: true,
+        addLabels: false
+      }
+    };
   }
 
   // ===================================================================
@@ -511,50 +558,89 @@ DESCRIPTION: [brief description]`;
     category: FileCluster['category'];
     keywords: string[];
   }> {
-    // Simple heuristic-based analysis
+    // Get file metadata for better analysis
     const fileNames = files.map(f => f.fileName.toLowerCase());
     const allText = files.map(f => f.content?.substring(0, 200) || '').join(' ').toLowerCase();
+    const fileTypes = files.map(f => (f.metadata as any)?.mimeType?.toLowerCase() || '');
 
-    // Detect patterns
-    const patterns = {
-      work: ['meeting', 'report', 'presentation', 'budget', 'project', 'proposal'],
-      personal: ['photo', 'vacation', 'family', 'personal', 'diary', 'journal'],
-      media: ['image', 'video', 'audio', 'photo', '.jpg', '.png', '.mp4'],
-      documents: ['document', 'pdf', 'doc', 'text', 'notes', 'manual'],
-      archive: ['old', 'backup', 'archive', '2020', '2021', '2022']
+    // Enhanced category detection
+    const categoryScores = {
+      work: 0,
+      personal: 0,
+      media: 0,
+      documents: 0,
+      archive: 0,
+      mixed: 0
     };
 
+    // Score based on file types
+    fileTypes.forEach(type => {
+      if (type.includes('image') || type.includes('video') || type.includes('audio')) {
+        categoryScores.media += 2;
+      } else if (type.includes('document') || type.includes('pdf') || type.includes('text')) {
+        categoryScores.documents += 2;
+      }
+    });
+
+    // Score based on content and filenames
+    const patterns = {
+      work: ['meeting', 'report', 'presentation', 'budget', 'project', 'proposal', 'work', 'business', 'company'],
+      personal: ['photo', 'vacation', 'family', 'personal', 'diary', 'journal', 'home', 'life'],
+      media: ['image', 'video', 'audio', 'photo', '.jpg', '.png', '.mp4', 'media', 'picture'],
+      documents: ['document', 'pdf', 'doc', 'text', 'notes', 'manual', 'paper', 'report'],
+      archive: ['old', 'backup', 'archive', '2020', '2021', '2022', 'previous']
+    };
+
+    for (const [category, keywords] of Object.entries(patterns)) {
+      keywords.forEach(keyword => {
+        // Check content
+        if (allText.includes(keyword)) {
+          categoryScores[category as keyof typeof categoryScores] += 1;
+        }
+        // Check filenames (weighted more heavily)
+        if (fileNames.some(name => name.includes(keyword))) {
+          categoryScores[category as keyof typeof categoryScores] += 2;
+        }
+      });
+    }
+
+    // Find the best category
     let bestCategory: FileCluster['category'] = 'mixed';
     let maxScore = 0;
 
-    for (const [category, keywords] of Object.entries(patterns)) {
-      const score = keywords.reduce((sum, keyword) => {
-        return sum + (allText.includes(keyword) ? 1 : 0) + 
-               (fileNames.some(name => name.includes(keyword)) ? 2 : 0);
-      }, 0);
-
+    for (const [category, score] of Object.entries(categoryScores)) {
       if (score > maxScore) {
         maxScore = score;
         bestCategory = category as FileCluster['category'];
       }
     }
 
-    // Generate theme name
+    // Extract meaningful words for naming
     const commonWords = this.extractCommonWords(fileNames);
-    const themeName = commonWords.length > 0 
-      ? `${commonWords[0]} Collection`
-      : `${bestCategory} Files`;
+    const meaningfulWords = commonWords.filter(word => 
+      word.length > 3 && !['file', 'doc', 'pdf', 'txt'].includes(word)
+    );
 
-    const folderName = commonWords.length > 0 
-      ? this.capitalizeWords(commonWords[0])
-      : this.capitalizeWords(bestCategory);
+    // Generate theme name and folder name
+    let themeName: string;
+    let folderName: string;
+
+    if (meaningfulWords.length > 0) {
+      const primaryWord = meaningfulWords[0];
+      themeName = `${this.capitalizeWords(primaryWord)} Collection`;
+      folderName = this.capitalizeWords(primaryWord);
+    } else {
+      // Use category-based naming only if no meaningful words found
+      themeName = `${this.capitalizeWords(bestCategory)} Files`;
+      folderName = this.capitalizeWords(bestCategory);
+    }
 
     return {
       name: themeName,
-      description: `${files.length} files related to ${bestCategory}`,
-      folderName: folderName.replace(/[^a-zA-Z0-9\s\-_]/g, '').substring(0, 25),
+      description: `Collection of ${bestCategory} files`,
+      folderName,
       category: bestCategory,
-      keywords: [...commonWords, ...(bestCategory === 'mixed' ? [] : patterns[bestCategory as keyof typeof patterns])].slice(0, 5)
+      keywords: meaningfulWords
     };
   }
 
