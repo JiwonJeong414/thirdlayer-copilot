@@ -103,21 +103,6 @@ export default function DriveOrganizerCard({ onActivate }: DriveOrganizerCardPro
   );
 }
 
-// Update your existing DriveCleanerDashboard.tsx to include this option:
-
-// Add this to the existing modes grid in DriveCleanerDashboard.tsx:
-/*
-<DriveOrganizerCard 
-  onActivate={() => onModeChange('organize')} 
-/>
-*/
-
-// Then update the renderCurrentMode function in your cleaner page:
-/*
-case 'organize':
-  return <DriveOrganizerDashboard onBack={() => setMode('dashboard')} />;
-*/
-
 // src/lib/organizationUtils.ts - Helper utilities
 export class OrganizationUtils {
   static async getOrganizationStats(userId: string) {
