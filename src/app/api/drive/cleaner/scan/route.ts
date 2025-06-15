@@ -1,14 +1,8 @@
-// src/app/api/drive/cleaner/scan/route.ts - SIMPLIFIED WORKING VERSION
+// src/app/api/drive/cleaner/scan/route.ts - SIMPLE WORKING VERSION
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@/generated/prisma';
-import { google } from 'googleapis';
 
 const prisma = new PrismaClient();
-
-// File size thresholds (in bytes)
-const EMPTY_FILE_THRESHOLD = 50; // 50 bytes or less
-const TINY_FILE_THRESHOLD = 2048; // 2KB or less
-const SMALL_FILE_THRESHOLD = 10240; // 10KB or less
 
 interface CleanableFile {
   id: string;
@@ -41,184 +35,136 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Drive not connected' }, { status: 400 });
     }
 
-    if (!user.driveConnection.accessToken) {
-      return NextResponse.json({ error: 'Invalid Drive credentials' }, { status: 400 });
-    }
-
-    console.log('🧹 Starting simple Drive cleaner scan...');
-    console.log('🔑 Using credentials:', {
-      hasAccessToken: !!user.driveConnection.accessToken,
-      hasRefreshToken: !!user.driveConnection.refreshToken,
-    });
-    
-    // Set up Google Drive API
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      process.env.GOOGLE_REDIRECT_URI
-    );
-
-    oauth2Client.setCredentials({
-      access_token: user.driveConnection.accessToken,
-      refresh_token: user.driveConnection.refreshToken,
-    });
-
-    const drive = google.drive({ version: 'v3', auth: oauth2Client });
+    console.log('🧹 Starting simple Drive cleaner scan from database...');
     
     const cleanableFiles: CleanableFile[] = [];
-    let nextPageToken: string | undefined;
-    let totalScanned = 0;
 
-    // Scan files in batches
-    try {
-      do {
-        console.log(`📡 Fetching files page ${nextPageToken ? '(next)' : '(first)'}`);
-        
-        const response = await drive.files.list({
-          pageSize: 100,
-          pageToken: nextPageToken,
-          fields: 'nextPageToken, files(id, name, mimeType, size, modifiedTime, webViewLink, owners)',
-          q: 'trashed=false and "me" in owners', // Only get files owned by the user
+    // Query 1: Empty and very small files
+    const tinyFiles = await prisma.document.findMany({
+      where: {
+        userId: user.id,
+        size: {
+          lte: 2048 // 2KB or smaller
+        }
+      },
+      take: 15
+    });
+
+    // Query 2: Duplicates based on common patterns
+    const duplicateFiles = await prisma.document.findMany({
+      where: {
+        userId: user.id,
+        name: {
+          contains: 'copy',
+          mode: 'insensitive'
+        }
+      },
+      take: 10
+    });
+
+    // Query 3: System and junk files
+    const systemFiles = await prisma.document.findMany({
+      where: {
+        userId: user.id,
+        name: {
+          in: ['.DS_Store', 'Thumbs.db', 'desktop.ini']
+        }
+      },
+      take: 10
+    });
+
+    // Query 4: Very old small files
+    const oldFiles = await prisma.document.findMany({
+      where: {
+        userId: user.id,
+        modifiedTime: {
+          lt: new Date('2022-01-01')
+        },
+        size: {
+          lte: 10240 // 10KB
+        }
+      },
+      take: 10
+    });
+
+    // Process tiny files
+    for (const file of tinyFiles) {
+      const analysis = analyzeFile(file);
+      if (analysis) {
+        cleanableFiles.push({
+          id: file.driveId,
+          name: file.name,
+          mimeType: file.mimeType,
+          size: file.size || 0,
+          modifiedTime: file.modifiedTime.toISOString(),
+          webViewLink: file.webViewLink || undefined,
+          selected: false,
+          ...analysis
         });
-
-        const files = response.data.files || [];
-        totalScanned += files.length;
-
-        console.log(`📄 Got ${files.length} files, total scanned: ${totalScanned}`);
-
-        for (const file of files) {
-          if (!file.id || !file.name || !file.mimeType) continue;
-          
-          // Skip if not owned by the user
-          if (!file.owners?.some(owner => owner.me)) {
-            continue;
-          }
-          
-          const fileSize = file.size ? parseInt(file.size) : 0;
-          
-          // Skip folders
-          if (file.mimeType === 'application/vnd.google-apps.folder') {
-            continue;
-          }
-
-          let category: CleanableFile['category'] | null = null;
-          let reason = '';
-          let confidence: 'low' | 'medium' | 'high' = 'low';
-
-          // Categorize files based on size and characteristics
-          if (fileSize === 0) {
-            category = 'empty';
-            reason = 'Empty file (0 bytes)';
-            confidence = 'high';
-          } else if (fileSize <= EMPTY_FILE_THRESHOLD) {
-            category = 'empty';
-            reason = `Nearly empty file (${fileSize} bytes)`;
-            confidence = 'high';
-          } else if (fileSize <= TINY_FILE_THRESHOLD) {
-            category = 'tiny';
-            reason = `Very small file (${formatFileSize(fileSize)})`;
-            confidence = 'medium';
-            
-            // Special cases for tiny files
-            if (file.name === '.DS_Store' || file.name.startsWith('._')) {
-              category = 'system';
-              reason = 'System file (can be safely deleted)';
-              confidence = 'high';
-            } else if (file.name.includes('thumb') || file.name.includes('cache')) {
-              reason = 'Thumbnail or cache file';
-              confidence = 'high';
-            }
-          } else if (fileSize <= SMALL_FILE_THRESHOLD) {
-            category = 'small';
-            reason = `Small file (${formatFileSize(fileSize)}) - needs review`;
-            confidence = 'low';
-            
-            // Special cases for small files
-            if (file.mimeType.includes('zip') || file.mimeType.includes('archive')) {
-              reason = 'Small archive file (possibly empty)';
-              confidence = 'medium';
-            } else if (file.mimeType.includes('document') || file.mimeType.includes('presentation')) {
-              reason = 'Small document (possibly template or empty)';
-              confidence = 'medium';
-            }
-          }
-
-          // Check for potential duplicates (simple name-based detection)
-          if (file.name.includes(' - Copy') || file.name.includes(' (1)') || file.name.includes('_copy')) {
-            category = 'duplicate';
-            reason = 'Potential duplicate file';
-            confidence = 'medium';
-          }
-
-          // Check for old files
-          if (file.modifiedTime) {
-            const modifiedDate = new Date(file.modifiedTime);
-            const ageInDays = (Date.now() - modifiedDate.getTime()) / (1000 * 60 * 60 * 24);
-            
-            if (ageInDays > 365 * 2) { // 2+ years old
-              if (!category) {
-                category = 'old';
-                reason = `Very old file (${Math.floor(ageInDays / 365)} years old)`;
-                confidence = 'low';
-              }
-            }
-          }
-
-          // Add to cleanable files if it matches our criteria
-          if (category) {
-            // Simple AI analysis for better recommendations
-            let aiSummary = '';
-            if (category === 'empty') {
-              aiSummary = 'This file appears to be empty or nearly empty with no useful content. Safe to delete.';
-            } else if (category === 'system') {
-              aiSummary = 'This is a system-generated file that can be safely removed without affecting your data.';
-            } else if (category === 'duplicate') {
-              aiSummary = 'This appears to be a duplicate file based on the filename pattern. Check if you need multiple copies.';
-            } else if (category === 'tiny') {
-              aiSummary = 'Very small file that might be incomplete, corrupted, or accidentally created.';
-            } else if (category === 'small') {
-              aiSummary = 'Small file that could be a template, test file, or incomplete document. Review before deleting.';
-            } else if (category === 'old') {
-              aiSummary = 'Old file that might no longer be relevant. Consider if it has historical value.';
-            }
-
-            cleanableFiles.push({
-              id: file.id,
-              name: file.name,
-              mimeType: file.mimeType,
-              size: fileSize,
-              modifiedTime: file.modifiedTime || new Date().toISOString(),
-              webViewLink: file.webViewLink || undefined,
-              selected: false,
-              category,
-              reason,
-              confidence,
-              aiSummary,
-            });
-          }
-        }
-        
-        nextPageToken = response.data.nextPageToken || undefined;
-        
-        // FIXED: Break out of the outer loop too when we have 5 files
-        if (cleanableFiles.length >= 5) {
-          console.log('🛑 Breaking out of page loop - found 5 cleanable files');
-          break;
-        }
-        
-      } while (nextPageToken && cleanableFiles.length < 5);
-    } catch (driveError) {
-      console.error('❌ Drive API error:', driveError);
-      throw new Error(`Drive API error: ${driveError instanceof Error ? driveError.message : 'Unknown error'}`);
+      }
     }
 
-    console.log(`✅ Scan complete: Found ${cleanableFiles.length} cleanable files out of ${totalScanned} total files`);
+    // Process duplicate files
+    for (const file of duplicateFiles) {
+      const analysis = analyzeFile(file);
+      if (analysis) {
+        cleanableFiles.push({
+          id: file.driveId,
+          name: file.name,
+          mimeType: file.mimeType,
+          size: file.size || 0,
+          modifiedTime: file.modifiedTime.toISOString(),
+          webViewLink: file.webViewLink || undefined,
+          selected: false,
+          ...analysis
+        });
+      }
+    }
 
-    // Sort by confidence and size (most important first)
+    // Process system files
+    for (const file of systemFiles) {
+      const analysis = analyzeFile(file);
+      if (analysis) {
+        cleanableFiles.push({
+          id: file.driveId,
+          name: file.name,
+          mimeType: file.mimeType,
+          size: file.size || 0,
+          modifiedTime: file.modifiedTime.toISOString(),
+          webViewLink: file.webViewLink || undefined,
+          selected: false,
+          ...analysis
+        });
+      }
+    }
+
+    // Process old files
+    for (const file of oldFiles) {
+      const analysis = analyzeFile(file);
+      if (analysis) {
+        cleanableFiles.push({
+          id: file.driveId,
+          name: file.name,
+          mimeType: file.mimeType,
+          size: file.size || 0,
+          modifiedTime: file.modifiedTime.toISOString(),
+          webViewLink: file.webViewLink || undefined,
+          selected: false,
+          ...analysis
+        });
+      }
+    }
+
+    console.log(`✅ Database scan complete: Found ${cleanableFiles.length} cleanable files`);
+
+    // Sort by confidence and category importance
     cleanableFiles.sort((a, b) => {
       const confidenceOrder = { high: 3, medium: 2, low: 1 };
-      const aScore = confidenceOrder[a.confidence] * 1000 + a.size;
-      const bScore = confidenceOrder[b.confidence] * 1000 + b.size;
+      const categoryOrder = { empty: 5, system: 4, duplicate: 3, tiny: 2, small: 1, old: 1 };
+      
+      const aScore = confidenceOrder[a.confidence] * 10 + categoryOrder[a.category];
+      const bScore = confidenceOrder[b.confidence] * 10 + categoryOrder[b.category];
+      
       return bScore - aScore;
     });
 
@@ -227,9 +173,7 @@ export async function POST(request: NextRequest) {
       f.confidence === 'high' && ['empty', 'system'].includes(f.category)
     );
     
-    const review = cleanableFiles.filter(f => 
-      !autoDelete.includes(f)
-    );
+    const review = cleanableFiles.filter(f => !autoDelete.includes(f));
 
     return NextResponse.json({
       success: true,
@@ -242,7 +186,7 @@ export async function POST(request: NextRequest) {
       },
       summary: {
         totalFound: cleanableFiles.length,
-        totalScanned,
+        scanMethod: 'Database queries',
         highConfidence: cleanableFiles.filter(f => f.confidence === 'high').length,
         mediumConfidence: cleanableFiles.filter(f => f.confidence === 'medium').length,
         lowConfidence: cleanableFiles.filter(f => f.confidence === 'low').length,
@@ -253,18 +197,133 @@ export async function POST(request: NextRequest) {
           tiny: cleanableFiles.filter(f => f.category === 'tiny').length,
           small: cleanableFiles.filter(f => f.category === 'small').length,
           old: cleanableFiles.filter(f => f.category === 'old').length,
-        },
-        aiAnalyzed: cleanableFiles.length, // All files get basic AI analysis
+        }
       }
     });
 
   } catch (error) {
-    console.error('Error scanning drive for cleanup:', error);
+    console.error('Error in database cleanup scan:', error);
     return NextResponse.json({ 
-      error: 'Failed to scan drive',
+      error: 'Failed to scan database',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }
+}
+
+// Simple file analysis function
+function analyzeFile(file: any): {
+  category: CleanableFile['category'];
+  reason: string;
+  confidence: 'low' | 'medium' | 'high';
+  aiSummary: string;
+} | null {
+  const fileName = file.name || '';
+  const fileSize = file.size || 0;
+
+  // Empty files
+  if (fileSize === 0) {
+    return {
+      category: 'empty',
+      reason: 'Empty file (0 bytes)',
+      confidence: 'high',
+      aiSummary: 'This file is completely empty and can be safely deleted.'
+    };
+  }
+
+  // Nearly empty files
+  if (fileSize <= 100) {
+    return {
+      category: 'empty',
+      reason: `Nearly empty file (${formatFileSize(fileSize)})`,
+      confidence: 'high',
+      aiSummary: 'This file is nearly empty with minimal content.'
+    };
+  }
+
+  // System files
+  if (isSystemFile(fileName)) {
+    return {
+      category: 'system',
+      reason: 'System/junk file',
+      confidence: 'high',
+      aiSummary: 'This is a system-generated file that can be safely removed.'
+    };
+  }
+
+  // Duplicates
+  if (isPotentialDuplicate(fileName)) {
+    return {
+      category: 'duplicate',
+      reason: `Potential duplicate file (${formatFileSize(fileSize)})`,
+      confidence: 'medium',
+      aiSummary: 'This appears to be a duplicate based on the filename pattern.'
+    };
+  }
+
+  // Very small files
+  if (fileSize <= 2048) { // 2KB
+    return {
+      category: 'tiny',
+      reason: `Very small file (${formatFileSize(fileSize)})`,
+      confidence: 'medium',
+      aiSummary: 'This is a very small file that might be incomplete or corrupted.'
+    };
+  }
+
+  // Old files
+  if (file.modifiedTime && isVeryOld(file.modifiedTime) && fileSize <= 10240) { // Old files under 10KB
+    const ageYears = Math.floor((Date.now() - new Date(file.modifiedTime).getTime()) / (365 * 24 * 60 * 60 * 1000));
+    return {
+      category: 'old',
+      reason: `Old small file (${ageYears} years old, ${formatFileSize(fileSize)})`,
+      confidence: 'low',
+      aiSummary: 'This is an old small file that might no longer be relevant.'
+    };
+  }
+
+  // Small files with certain patterns
+  if (fileSize <= 10240 && hasSuspiciousPattern(fileName)) { // 10KB
+    return {
+      category: 'small',
+      reason: `Small file with suspicious name (${formatFileSize(fileSize)})`,
+      confidence: 'low',
+      aiSummary: 'This small file has characteristics that suggest it might be cleanable.'
+    };
+  }
+
+  // File doesn't meet cleanable criteria
+  return null;
+}
+
+// Helper functions
+function isSystemFile(filename: string): boolean {
+  const systemFiles = ['.DS_Store', 'Thumbs.db', 'desktop.ini', '.directory', 'Icon\r'];
+  const systemPatterns = [/^\._.+/, /^~\$.*/, /^\._/, /\.tmp$/i, /\.temp$/i];
+  
+  return systemFiles.includes(filename) || systemPatterns.some(pattern => pattern.test(filename));
+}
+
+function isPotentialDuplicate(filename: string): boolean {
+  const duplicatePatterns = [
+    / - Copy/i, / \(\d+\)$/, /_copy/i, /_backup$/i, /^Copy of /i,
+    / backup$/i, / old$/i, /backup\d*\./i, /old\d*\./i, / - version/i
+  ];
+  
+  return duplicatePatterns.some(pattern => pattern.test(filename));
+}
+
+function isVeryOld(modifiedTime: string): boolean {
+  const modifiedDate = new Date(modifiedTime);
+  const ageInYears = (Date.now() - modifiedDate.getTime()) / (1000 * 60 * 60 * 24 * 365);
+  return ageInYears > 2; // More than 2 years old
+}
+
+function hasSuspiciousPattern(filename: string): boolean {
+  const suspiciousPatterns = [
+    /temp/i, /test/i, /draft/i, /bak$/i, /\.old$/i
+  ];
+  
+  return suspiciousPatterns.some(pattern => pattern.test(filename));
 }
 
 function formatFileSize(bytes: number): string {
