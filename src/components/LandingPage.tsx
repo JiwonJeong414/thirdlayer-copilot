@@ -1,22 +1,14 @@
-// src/components/LandingPage.tsx - Updated with separate links for AI features
+// src/components/LandingPage.tsx - Landing page with auth and hero section
 'use client';
 
 import React from 'react';
 import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { 
-  MessageSquare, 
-  Sparkles, 
-  Brain, 
   ArrowDown, 
   Cloud, 
-  Zap, 
   ChevronDown,
-  CheckCircle,
-  Star,
-  Users,
-  FileText,
-  FolderOpen
+  CheckCircle
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -29,51 +21,6 @@ const LandingPage = () => {
   const y1 = useTransform(scrollY, [0, 1000], [0, -200]);
   const y2 = useTransform(scrollY, [0, 1000], [0, -400]);
   const opacity = useTransform(scrollY, [0, 300], [1, 0]);
-
-  const features = [
-    {
-      id: 'chat',
-      title: 'AI Chat',
-      subtitle: 'Layer One',
-      description: 'Intelligent conversations with your documents. Ask questions, get insights, and chat with your entire Google Drive.',
-      icon: MessageSquare,
-      color: 'from-blue-500 to-cyan-500',
-      bgColor: 'bg-blue-500/10',
-      borderColor: 'border-blue-500/20',
-      stats: ['Smart document search', 'Natural language queries', 'Context-aware responses'],
-      href: '/chat', // Updated to use the new chat route
-    },
-    {
-      id: 'cleanup',
-      title: 'AI Cleanup',
-      subtitle: 'Layer Two', 
-      description: 'Smart file organization and cleanup. Remove duplicates, find unused files, and optimize your storage automatically.',
-      icon: Sparkles,
-      color: 'from-purple-500 to-pink-500',
-      bgColor: 'bg-purple-500/10',
-      borderColor: 'border-purple-500/20',
-      stats: ['Duplicate detection', 'Smart categorization', 'Space optimization'],
-      href: '/cleanup', // Separate cleanup page
-    },
-    {
-      id: 'organize',
-      title: 'AI Organization',
-      subtitle: 'Layer Three',
-      description: 'Intelligent folder structure and file organization. Let AI create the perfect hierarchy for your files.',
-      icon: Brain,
-      color: 'from-emerald-500 to-teal-500',
-      bgColor: 'bg-emerald-500/10',
-      borderColor: 'border-emerald-500/20',
-      stats: ['Smart folders', 'Auto-categorization', 'ML-powered insights'],
-      href: '/organize', // Separate organization page
-    }
-  ];
-
-  const handleFeatureClick = (href: string) => {
-    if (user) {
-      router.push(href);
-    }
-  };
 
   const handleGetStarted = () => {
     if (user) {
@@ -195,7 +142,7 @@ const LandingPage = () => {
           }}
           transition={{ duration: 3, repeat: Infinity, delay: 1 }}
         >
-          <Sparkles className="w-8 h-8 text-purple-400" />
+          <Cloud className="w-8 h-8 text-purple-400" />
         </motion.div>
       </section>
 
@@ -305,128 +252,6 @@ const LandingPage = () => {
           </AnimatePresence>
         </motion.div>
       </section>
-
-      {/* Features Section - Only show if user is signed in */}
-      <AnimatePresence>
-        {user && (
-          <motion.section 
-            id="features-section"
-            className="min-h-screen py-20"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 1 }}
-          >
-            <div className="max-w-7xl mx-auto px-6">
-              <motion.div 
-                className="text-center mb-20"
-                initial={{ y: 50, opacity: 0 }}
-                whileInView={{ y: 0, opacity: 1 }}
-                transition={{ duration: 0.8 }}
-                viewport={{ once: true }}
-              >
-                <h2 className="text-5xl font-bold mb-6">
-                  Three powerful layers,{' '}
-                  <span className="bg-gradient-to-r from-blue-400 via-purple-400 to-emerald-400 bg-clip-text text-transparent">
-                    infinite possibilities
-                  </span>
-                </h2>
-                <p className="text-xl text-gray-300">
-                  Each layer builds upon the last, creating a complete Drive experience
-                </p>
-              </motion.div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {features.map((feature, index) => {
-                  const Icon = feature.icon;
-                  return (
-                    <motion.div
-                      key={feature.id}
-                      className={`group relative p-8 ${feature.bgColor} ${feature.borderColor} border rounded-3xl hover:scale-105 transition-all duration-500 cursor-pointer`}
-                      initial={{ y: 100, opacity: 0 }}
-                      whileInView={{ y: 0, opacity: 1 }}
-                      transition={{ delay: index * 0.2, duration: 0.8 }}
-                      viewport={{ once: true }}
-                      whileHover={{ y: -10 }}
-                      onClick={() => handleFeatureClick(feature.href)}
-                    >
-                      {/* Layer indicator */}
-                      <div className="absolute -top-4 left-8">
-                        <span className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-full text-sm font-medium">
-                          {feature.subtitle}
-                        </span>
-                      </div>
-
-                      {/* Icon */}
-                      <motion.div 
-                        className={`mb-6 w-16 h-16 bg-gradient-to-r ${feature.color} rounded-2xl flex items-center justify-center`}
-                        whileHover={{ rotate: 360 }}
-                        transition={{ duration: 0.8 }}
-                      >
-                        <Icon className="w-8 h-8 text-white" />
-                      </motion.div>
-
-                      {/* Content */}
-                      <h3 className="text-2xl font-bold mb-4">{feature.title}</h3>
-                      <p className="text-gray-300 mb-6 leading-relaxed">
-                        {feature.description}
-                      </p>
-
-                      {/* Stats */}
-                      <div className="space-y-3">
-                        {feature.stats.map((stat, statIndex) => (
-                          <motion.div
-                            key={statIndex}
-                            className="flex items-center space-x-3"
-                            initial={{ x: -20, opacity: 0 }}
-                            whileInView={{ x: 0, opacity: 1 }}
-                            transition={{ delay: index * 0.2 + statIndex * 0.1, duration: 0.5 }}
-                            viewport={{ once: true }}
-                          >
-                            <div className={`w-2 h-2 bg-gradient-to-r ${feature.color} rounded-full`} />
-                            <span className="text-sm text-gray-400">{stat}</span>
-                          </motion.div>
-                        ))}
-                      </div>
-
-                      {/* Hover effect */}
-                      <motion.div
-                        className="absolute inset-0 bg-gradient-to-r from-white/5 to-white/10 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"
-                        initial={false}
-                      />
-                    </motion.div>
-                  );
-                })}
-              </div>
-
-              {/* CTA Section */}
-              <motion.div 
-                className="text-center mt-20"
-                initial={{ y: 50, opacity: 0 }}
-                whileInView={{ y: 0, opacity: 1 }}
-                transition={{ duration: 0.8 }}
-                viewport={{ once: true }}
-              >
-                <motion.button
-                  className="group relative px-12 py-6 bg-gradient-to-r from-blue-500 via-purple-500 to-emerald-500 rounded-full text-white font-bold text-xl hover:shadow-2xl transition-all duration-300"
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={handleGetStarted}
-                >
-                  <span className="relative z-10">Start Your Journey</span>
-                  <motion.div
-                    className="absolute inset-0 bg-gradient-to-r from-blue-600 via-purple-600 to-emerald-600 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-                    initial={false}
-                  />
-                </motion.button>
-                
-                <p className="mt-4 text-gray-400">
-                  Your Google Drive, supercharged with AI
-                </p>
-              </motion.div>
-            </div>
-          </motion.section>
-        )}
-      </AnimatePresence>
 
       {/* Footer */}
       <footer className="border-t border-gray-800 py-12">
