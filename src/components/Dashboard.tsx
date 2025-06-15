@@ -1,4 +1,4 @@
-// src/components/Dashboard.tsx - Main dashboard component with AI features and Google Drive integration
+// Main dashboard component with AI features and Google Drive integration
 'use client';
 
 import React, { useState } from 'react';

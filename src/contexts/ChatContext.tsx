@@ -1,4 +1,4 @@
-// src/contexts/ChatContext.tsx - Updated with session-based auth
+// Manages chat state, AI model interactions, and Google Drive integration for contextual conversations
 'use client';
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
@@ -35,10 +35,23 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
   // Load chats and models when user is authenticated
   useEffect(() => {
     if (user) {
-      fetchChats();
-      fetchModels();
+      fetchChats(); // Load user's chat history 
+      fetchModels(); // Get available AI models from Ollama
     }
   }, [user]);
+
+  // Fetch user's chat history
+  const fetchChats = async () => {
+    if (!user) return;
+    
+    try {
+      const response = await fetch('/api/chats');
+      const data = await response.json();
+      setChats(data.chats || []);
+    } catch (error) {
+      console.error('Error fetching chats:', error);
+    }
+  };
 
   // Fetch available AI models from the server
   const fetchModels = async () => {
@@ -56,19 +69,6 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
       }
     } catch (error) {
       console.error('Error fetching models:', error);
-    }
-  };
-
-  // Fetch user's chat history
-  const fetchChats = async () => {
-    if (!user) return;
-    
-    try {
-      const response = await fetch('/api/chats');
-      const data = await response.json();
-      setChats(data.chats || []);
-    } catch (error) {
-      console.error('Error fetching chats:', error);
     }
   };
 
@@ -165,7 +165,7 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
       }
     }
 
-    // Search drive documents if enabled
+    // WHEN DRIVE SEARCH IS ENABLED!!! Search drive documents if enabled 
     let driveContext: any[] = [];
     if (driveSearchEnabled && driveConnection.isConnected) {
       try {

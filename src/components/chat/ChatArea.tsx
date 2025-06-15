@@ -1,4 +1,4 @@
-// ChatArea component - Main chat interface with ThirdLayer branding
+// ChatArea component - Main chat interface
 import React, { useRef, useEffect } from 'react';
 import { User, MessageSquare, FileText, Cloud, HelpCircle, MoreHorizontal, Send } from 'lucide-react';
 import { useChat } from '@/contexts/ChatContext';
@@ -7,8 +7,8 @@ import { useDrive } from '@/contexts/DriveContext';
 
 export default function ChatArea() {
   // State and hooks
-  const [message, setMessage] = React.useState('');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [message, setMessage] = React.useState(''); // Current message input
+  const messagesEndRef = useRef<HTMLDivElement>(null); // Ref for auto-scrolling
   const { user, driveConnection } = useAuth();
   const { indexedFiles } = useDrive();
   const {
@@ -20,12 +20,13 @@ export default function ChatArea() {
     sendMessage,
   } = useChat();
 
-  // Auto-scroll to bottom when messages change
+  // Auto-scroll to bottom when new messages are added
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Handle message submission
+  // Handle message submission and clear input after sending
+  // This is IMPORTANT
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (message.trim() && !isLoading) {
@@ -34,12 +35,12 @@ export default function ChatArea() {
     }
   };
 
-  // Format timestamp for message display
+  // Format message timestamps for display
   const formatTimestamp = (timestamp: string) => {
     return new Date(timestamp).toLocaleTimeString();
   };
 
-  // Example prompts for new users
+  // Example prompts shown to new users
   const examplePrompts = [
     'Explain quantum computing in simple terms',
     'Write a Python function to reverse a string',
@@ -49,7 +50,7 @@ export default function ChatArea() {
 
   return (
     <div className="flex-1 flex flex-col h-screen">
-      {/* Top Bar - Fixed position with chat info and controls */}
+      {/* Top Bar - Contains chat title, model info, and control buttons */}
       <div className="bg-gray-800 border-b border-gray-700 p-4 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
@@ -83,7 +84,7 @@ export default function ChatArea() {
         </div>
       </div>
 
-      {/* Chat Messages Area - Scrollable container */}
+      {/* Chat Messages Area - Displays message history and example prompts */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 ? (
           // Empty state with example prompts
@@ -173,7 +174,7 @@ export default function ChatArea() {
         )}
       </div>
 
-      {/* Input Area - Fixed at bottom */}
+      {/* Input Area - Message input form with send button */}
       <div className="border-t border-gray-700 p-4 bg-gray-800">
         <form onSubmit={handleSubmit} className="flex space-x-4">
           <input
