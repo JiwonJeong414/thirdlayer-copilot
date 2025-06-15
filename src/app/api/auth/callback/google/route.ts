@@ -1,3 +1,4 @@
+// Handles Google OAuth callback, creates/updates user, and sets session cookie
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { PrismaClient } from '@/generated/prisma';
