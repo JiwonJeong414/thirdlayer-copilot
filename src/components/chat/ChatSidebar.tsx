@@ -1,4 +1,4 @@
-// Sidebar for the Chat Page
+// ChatSidebar component for the Chat Page
 import React, { useState } from "react";
 import Link from "next/link";
 import {
@@ -15,13 +15,6 @@ import {
   Settings,
   HelpCircle,
   LogOut,
-  FileText,
-  RefreshCw,
-  CheckCircle,
-  Loader2,
-  X,
-  Zap,
-  Sparkles,
   ToggleLeft,
   ToggleRight,
   ArrowLeft
@@ -30,8 +23,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useChat } from '@/contexts/ChatContext';
 import { useDrive } from '@/contexts/DriveContext';
 
-// Main Sidebar component that handles chat navigation and user settings
-export default function Sidebar() {
+// Main ChatSidebar component that handles chat navigation and user settings
+export default function ChatSidebar() {
   // State for user menu dropdown visibility
   const [showUserMenu, setShowUserMenu] = useState(false);
   // Get user data and authentication functions from context

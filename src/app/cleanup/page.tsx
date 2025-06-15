@@ -1,18 +1,20 @@
-// src/app/cleanup/page.tsx - Enhanced with pink theme and better UI
+// Main Page for AI Cleanup functionality in Dashboard
 'use client';
 
 import React from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import Protected from '@/components/Protected';
 import Spinner from '@/components/Spinner';
-import { SwipeToCleanUI } from '@/components/cleaner';
+import { CleanerUI } from '@/components/cleaner';
 import { Sparkles, ArrowLeft, Heart, Zap } from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 
 export default function CleanupPage() {
+  // Get authentication state and Google Drive connection status
   const { user, loading, driveConnection } = useAuth();
 
+  // Show loading spinner while authentication state is being determined
   if (loading) {
     return (
       <div className="flex h-screen w-screen justify-center items-center bg-gradient-to-br from-pink-900 via-purple-900 to-gray-900">
@@ -32,6 +34,7 @@ export default function CleanupPage() {
     );
   }
 
+  // Show sign-in prompt if user is not authenticated
   if (!user) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-pink-900 via-purple-900 to-gray-900 flex items-center justify-center">
@@ -60,10 +63,11 @@ export default function CleanupPage() {
     );
   }
 
+  // Show Google Drive connection prompt if not connected
   if (!driveConnection.isConnected) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-pink-900 via-purple-900 to-gray-900 flex items-center justify-center relative overflow-hidden">
-        {/* Animated background elements */}
+        {/* Animated background elements for visual appeal */}
         <div className="absolute inset-0">
           <motion.div 
             className="absolute top-20 left-20 w-32 h-32 bg-pink-500/20 rounded-full blur-xl"
@@ -91,13 +95,14 @@ export default function CleanupPage() {
           />
         </div>
 
+        {/* Main content container with animations */}
         <motion.div 
           className="text-center max-w-lg relative z-10"
           initial={{ y: 50, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.8 }}
         >
-          {/* Enhanced logo with layers */}
+          {/* Animated logo with layered design */}
           <motion.div 
             className="relative w-32 h-32 mx-auto mb-8"
             initial={{ scale: 0, rotate: -180 }}
@@ -127,6 +132,7 @@ export default function CleanupPage() {
             </motion.div>
           </motion.div>
 
+          {/* Main heading with gradient text */}
           <motion.h1 
             className="text-4xl font-bold mb-4"
             initial={{ opacity: 0, y: 20 }}
@@ -138,6 +144,7 @@ export default function CleanupPage() {
             </span>
           </motion.h1>
           
+          {/* Description text */}
           <motion.p 
             className="text-pink-200 text-lg mb-8 leading-relaxed"
             initial={{ opacity: 0, y: 20 }}
@@ -148,7 +155,7 @@ export default function CleanupPage() {
             Our smart algorithms will help you identify and remove unnecessary files.
           </motion.p>
 
-          {/* Feature highlights */}
+          {/* Feature highlights grid */}
           <motion.div 
             className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8"
             initial={{ opacity: 0, y: 30 }}
@@ -167,6 +174,7 @@ export default function CleanupPage() {
             </div>
           </motion.div>
 
+          {/* Back to dashboard button */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -185,10 +193,11 @@ export default function CleanupPage() {
     );
   }
 
+  // Main cleanup interface when user is authenticated and Drive is connected
   return (
     <Protected>
       <div className="min-h-screen bg-gradient-to-br from-pink-900 via-purple-900 to-gray-900">
-        <SwipeToCleanUI onBack={() => window.history.back()} />
+        <CleanerUI onBack={() => window.history.back()} />
       </div>
     </Protected>
   );

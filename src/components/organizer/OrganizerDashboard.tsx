@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { 
   FolderPlus, 
   Brain, 
@@ -21,46 +21,29 @@ import {
   TrendingUp,
   Target
 } from 'lucide-react';
-
-interface FileCluster {
-  id: string;
-  name: string;
-  description: string;
-  color: string;
-  files: Array<{
-    fileId: string;
-    fileName: string;
-    confidence: number;
-    keywords: string[];
-  }>;
-  suggestedFolderName: string;
-  category: 'work' | 'personal' | 'media' | 'documents' | 'archive' | 'mixed';
-}
-
-interface OrganizationSuggestion {
-  clusters: FileCluster[];
-  summary: {
-    totalFiles: number;
-    clustersCreated: number;
-    estimatedSavings: number;
-    confidence: number;
-  };
-  actions: {
-    createFolders: boolean;
-    moveFiles: boolean;
-    addLabels: boolean;
-  };
-}
+import { useOrganizer } from '../../contexts/OrganizerContext';
+import { FileCluster } from '../../types/organizer';
 
 export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void }) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [isOrganizing, setIsOrganizing] = useState(false);
-  const [suggestion, setSuggestion] = useState<OrganizationSuggestion | null>(null);
-  const [selectedMethod, setSelectedMethod] = useState<'folders' | 'clustering' | 'hybrid'>('hybrid');
-  const [maxClusters, setMaxClusters] = useState(6);
-  const [minClusterSize, setMinClusterSize] = useState(3);
-  const [createFolders, setCreateFolders] = useState(false);
-  const [selectedClusters, setSelectedClusters] = useState<Set<string>>(new Set());
+  const {
+    isAnalyzing,
+    isOrganizing,
+    suggestion,
+    selectedMethod,
+    maxClusters,
+    minClusterSize,
+    createFolders,
+    selectedClusters,
+    setSelectedMethod,
+    setMaxClusters,
+    setMinClusterSize,
+    setCreateFolders,
+    toggleCluster,
+    toggleAllClusters,
+    runAnalysis,
+    executeOrganization,
+    resetSuggestion
+  } = useOrganizer();
 
   const getCategoryIcon = (category: FileCluster['category']) => {
     switch (category) {
@@ -73,143 +56,9 @@ export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void
     }
   };
 
-  const runAnalysis = async () => {
-    setIsAnalyzing(true);
-    try {
-      console.log('🎯 Starting organization analysis...');
-      
-      const response = await fetch('/api/drive/organize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          method: selectedMethod,
-          maxClusters,
-          minClusterSize,
-          createFolders: false, // Always dry run first
-          dryRun: true
-        }),
-      });
-      
-      if (!response.ok) {
-        throw new Error('Organization analysis failed');
-      }
-      
-      const result = await response.json();
-      setSuggestion(result);
-      setSelectedClusters(new Set(result.clusters.map((c: FileCluster) => c.id)));
-      
-    } catch (error) {
-      console.error('Analysis failed:', error);
-      alert('Failed to analyze files for organization');
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
-
-  const executeOrganization = async () => {
-    if (!suggestion) return;
-    
-    // FIXED: Properly filter clusters based on user selection
-    const selectedClusterIds = Array.from(selectedClusters);
-    const selectedClusterData = suggestion.clusters.filter(c => selectedClusterIds.includes(c.id));
-    
-    if (selectedClusterData.length === 0) {
-      alert('Please select at least one cluster to organize');
-      return;
-    }
-
-    console.log('🎯 Selected clusters for execution:', selectedClusterData.map(c => ({ id: c.id, name: c.name })));
-
-    const confirmed = confirm(
-      `🚀 Create ${selectedClusterData.length} folders and organize ${
-        selectedClusterData.reduce((sum, c) => sum + c.files.length, 0)
-      } files?\n\nThis will:\n• Create new folders in Google Drive\n• Move files to appropriate folders\n• This action cannot be undone`
-    );
-
-    if (!confirmed) return;
-
-    setIsOrganizing(true);
-    try {
-      // FIXED: Send both IDs and names for better matching
-      const response = await fetch('/api/drive/organize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          method: selectedMethod,
-          maxClusters,
-          minClusterSize,
-          createFolders: true,
-          dryRun: false,
-          selectedClusters: selectedClusterIds, // Send the selected cluster IDs
-          selectedClusterNames: selectedClusterData.map(c => c.name), // Also send names for fallback matching
-          selectedClusterInfo: selectedClusterData.map(c => ({ // Send full info for debugging
-            id: c.id,
-            name: c.name,
-            fileCount: c.files.length,
-            category: c.category,
-            files: c.files.map(f => ({
-              fileId: f.fileId,
-              fileName: f.fileName,
-              confidence: f.confidence,
-              keywords: f.keywords
-            }))
-          }))
-        }),
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Organization execution failed');
-      }
-      
-      const result = await response.json();
-      
-      alert(`🎉 Organization completed successfully! 
-      
-Processed ${result.summary?.totalFiles || selectedClusterData.reduce((sum, c) => sum + c.files.length, 0)} files across ${selectedClusterData.length} folders.
-
-Check your Google Drive for the new folder structure.`);
-      
-      setSuggestion(null);
-      setSelectedClusters(new Set());
-      
-    } catch (error) {
-      console.error('Organization failed:', error);
-      alert(`Failed to organize files: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
-    } finally {
-      setIsOrganizing(false);
-    }
-  };
-
-  const toggleCluster = (clusterId: string) => {
-    setSelectedClusters(prev => {
-      const next = new Set(prev);
-      if (next.has(clusterId)) {
-        next.delete(clusterId);
-      } else {
-        next.add(clusterId);
-      }
-      console.log('🔄 Updated cluster selection:', Array.from(next));
-      return next;
-    });
-  };
-
-  const toggleAllClusters = () => {
-    if (!suggestion) return;
-    
-    if (selectedClusters.size === suggestion.clusters.length) {
-      setSelectedClusters(new Set());
-      console.log('🔄 Deselected all clusters');
-    } else {
-      setSelectedClusters(new Set(suggestion.clusters.map(c => c.id)));
-      console.log('🔄 Selected all clusters:', suggestion.clusters.map(c => c.name));
-    }
-  };
-
   return (
-      <div className="relative">
-        <div className="max-w-7xl mx-auto p-6">
-
+    <div className="relative">
+      <div className="max-w-7xl mx-auto p-6">
         {/* Configuration Panel */}
         {!suggestion && (
           <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl p-6 mb-8">
@@ -308,7 +157,8 @@ Check your Google Drive for the new folder structure.`);
               <button
                 onClick={runAnalysis}
                 disabled={isAnalyzing}
-                className="flex items-center space-x-3 px-8 py-4 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:from-gray-600 disabled:to-gray-700 rounded-xl text-white font-medium transition-all transform hover:scale-105 disabled:scale-100"              >
+                className="flex items-center space-x-3 px-8 py-4 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:from-gray-600 disabled:to-gray-700 rounded-xl text-white font-medium transition-all transform hover:scale-105 disabled:scale-100"
+              >
                 {isAnalyzing ? (
                   <>
                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
@@ -396,7 +246,7 @@ Check your Google Drive for the new folder structure.`);
 
                 <div className="flex items-center space-x-3">
                   <button
-                    onClick={() => setSuggestion(null)}
+                    onClick={resetSuggestion}
                     className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg transition-colors"
                   >
                     New Analysis

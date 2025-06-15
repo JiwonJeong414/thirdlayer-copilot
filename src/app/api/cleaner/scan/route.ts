@@ -1,4 +1,4 @@
-// src/app/api/drive/cleaner/scan/route.ts - SIMPLE WORKING VERSION
+// src/app/api/cleaner/scan/route.ts - SIMPLE WORKING VERSION
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@/generated/prisma';
 
@@ -331,4 +331,4 @@ function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
+} 

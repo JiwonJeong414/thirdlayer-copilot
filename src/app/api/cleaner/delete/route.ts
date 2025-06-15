@@ -1,4 +1,4 @@
-// src/app/api/drive/cleaner/delete/route.ts - FIXED with ownership check
+// src/app/api/cleaner/delete/route.ts - FIXED with ownership check
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@/generated/prisma';
 import { google } from 'googleapis';
@@ -143,4 +143,4 @@ export async function POST(request: NextRequest) {
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }
-}
+} 
