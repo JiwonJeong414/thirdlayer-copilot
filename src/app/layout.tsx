@@ -13,7 +13,7 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: 'Ollama Chat Interface',
+  title: 'Third Layer Copilot',
   description: 'AI Chat Interface with Ollama Integration and Google Drive Search',
 }
 

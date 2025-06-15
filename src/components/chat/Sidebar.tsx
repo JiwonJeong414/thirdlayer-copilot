@@ -1,4 +1,4 @@
-// src/components/Sidebar.tsx - Updated with fixes and ThirdLayer branding
+// Sidebar for the Chat Page
 import React, { useState } from "react";
 import Link from "next/link";
 import {
@@ -30,10 +30,14 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useChat } from '@/contexts/ChatContext';
 import { useDrive } from '@/contexts/DriveContext';
 
+// Main Sidebar component that handles chat navigation and user settings
 export default function Sidebar() {
+  // State for user menu dropdown visibility
   const [showUserMenu, setShowUserMenu] = useState(false);
+  // Get user data and authentication functions from context
   const { user, signOut, driveConnection } = useAuth();
   const { indexedFiles } = useDrive();
+  // Get chat-related state and functions from context
   const {
     chats,
     currentChat,
@@ -48,14 +52,17 @@ export default function Sidebar() {
     clearCurrentChat,
   } = useChat();
 
+  // Handler for creating a new chat
   const handleNewChat = async () => {
     clearCurrentChat();
   };
 
+  // Handler for loading a specific chat
   const handleChatClick = async (chatId: string) => {
     await loadChat(chatId);
   };
 
+  // Handler for deleting a chat with confirmation
   const handleDeleteChat = async (chatId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (confirm("Are you sure you want to delete this chat?")) {
@@ -63,6 +70,7 @@ export default function Sidebar() {
     }
   };
 
+  // Handler for user sign out with confirmation
   const handleSignOut = async () => {
     if (confirm("Are you sure you want to sign out?")) {
       await signOut();
@@ -71,7 +79,7 @@ export default function Sidebar() {
 
   return (
     <div className="w-80 bg-gray-800 border-r border-gray-700 flex flex-col h-screen">
-      {/* Header - Fixed */}
+      {/* Header section with logo, new chat button, and model selection */}
       <div className="p-4 border-b border-gray-700 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-2">
@@ -185,7 +193,7 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Chat History - Scrollable */}
+      {/* Chat history section with scrollable list of previous chats */}
       <div className="flex-1 overflow-y-auto p-2">
         <div className="text-xs text-gray-400 mb-2 px-2">CHAT HISTORY</div>
         {!chats || chats.length === 0 ? (
@@ -226,7 +234,7 @@ export default function Sidebar() {
         )}
       </div>
 
-      {/* Bottom Section - Fixed */}
+      {/* Bottom section with connection status and user profile */}
       <div className="p-4 border-t border-gray-700 flex-shrink-0">
         {/* Status Section */}
         <div className="flex items-center justify-between mb-3">
@@ -315,7 +323,7 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Click outside to close user menu */}
+      {/* Overlay to close user menu when clicking outside */}
       {showUserMenu && (
         <div
           className="fixed inset-0 z-40"

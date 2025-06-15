@@ -1,3 +1,4 @@
+// Validates session cookie and returns user data with access token
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@/generated/prisma';
 

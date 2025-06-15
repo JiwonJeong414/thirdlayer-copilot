@@ -1,42 +1,19 @@
-// src/contexts/DriveContext.tsx - FIXED to refresh indexed files after sync
+// DriveContext - Manages Google Drive integration and document search functionality
 'use client';
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { useAuth } from './AuthContext';
+import { 
+  DriveContextType, 
+  IndexedFile, 
+  SearchResult, 
+  SyncProgress 
+} from '@/types/drive';
 
-interface IndexedFile {
-  fileId: string;
-  fileName: string;
-  chunkCount: number;
-  lastUpdated: Date;
-}
-
-interface SearchResult {
-  content: string;
-  fileName: string;
-  fileId: string;
-  similarity: number;
-}
-
-interface DriveContextType {
-  indexedFiles: IndexedFile[];
-  isSync: boolean;
-  syncProgress: {
-    totalFiles: number;
-    processedCount: number;
-    errorCount: number;
-  } | null;
-  searchResults: SearchResult[];
-  isSearching: boolean;
-  syncDrive: () => Promise<void>;
-  searchDocuments: (query: string, limit?: number) => Promise<SearchResult[]>;
-  fetchIndexedFiles: () => Promise<void>;
-  clearSearch: () => void;
-  refreshIndexedFiles: () => Promise<void>; // Add this method
-}
-
+// Create context with undefined as initial value
 const DriveContext = createContext<DriveContextType | undefined>(undefined);
 
+// Custom hook to use Drive context
 export const useDrive = () => {
   const context = useContext(DriveContext);
   if (!context) {
@@ -45,18 +22,18 @@ export const useDrive = () => {
   return context;
 };
 
+// Provider component that wraps the app and makes drive functionality available
 export const DriveProvider = ({ children }: { children: ReactNode }) => {
   const { user, driveConnection } = useAuth();
+  
+  // State management for drive functionality
   const [indexedFiles, setIndexedFiles] = useState<IndexedFile[]>([]);
   const [isSync, setIsSync] = useState(false);
-  const [syncProgress, setSyncProgress] = useState<{
-    totalFiles: number;
-    processedCount: number;
-    errorCount: number;
-  } | null>(null);
+  const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
+  // Fetch the list of indexed files from the server
   const fetchIndexedFiles = async () => {
     if (!user || !driveConnection.isConnected) return;
 
@@ -76,17 +53,20 @@ export const DriveProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // Refresh the list of indexed files
   const refreshIndexedFiles = async () => {
     console.log('Refreshing indexed files...');
     await fetchIndexedFiles();
   };
 
+  // Fetch indexed files when user connects to drive
   useEffect(() => {
     if (user && driveConnection.isConnected) {
       fetchIndexedFiles();
     }
   }, [user, driveConnection.isConnected]);
 
+  // Start a new sync operation with Google Drive
   const syncDrive = async () => {
     if (!user || !driveConnection.isConnected || isSync) return;
 
@@ -119,6 +99,7 @@ export const DriveProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // Search through indexed documents
   const searchDocuments = async (query: string, limit: number = 5): Promise<SearchResult[]> => {
     if (!user || !driveConnection.isConnected) {
       throw new Error('Drive not connected');
@@ -149,10 +130,12 @@ export const DriveProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // Clear current search results
   const clearSearch = () => {
     setSearchResults([]);
   };
 
+  // Provide drive functionality to children components
   return (
     <DriveContext.Provider
       value={{
