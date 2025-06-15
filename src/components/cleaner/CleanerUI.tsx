@@ -1,15 +1,8 @@
-// src/components/drive/cleaner/SwipeToCleanUI.tsx - SIMPLIFIED WORKING VERSION
 'use client';
 
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Trash2, 
-  Heart, 
-  FileText, 
-  Image, 
-  Video, 
-  Archive,
   Zap,
   ThumbsUp,
   ThumbsDown,
@@ -17,43 +10,15 @@ import {
   Sparkles,
   Brain,
   CheckCircle,
-  XCircle,
   AlertTriangle,
-  Clock,
-  Copy,
-  HardDrive,
   ArrowLeft,
   RefreshCw
 } from 'lucide-react';
+import { CleanerFileCard } from './CleanerFileCard';
+import { CleanableFile, SwipeDecision, CleanerUIProps } from './CleanerTypes';
+import { CleanerApiClient } from './CleanerApiClient';
 
-interface CleanableFile {
-  id: string;
-  name: string;
-  mimeType: string;
-  size: number;
-  modifiedTime: string;
-  webViewLink?: string;
-  thumbnailLink?: string;
-  content?: string;
-  category: 'empty' | 'tiny' | 'small' | 'duplicate' | 'old' | 'low_quality' | 'system';
-  reason: string;
-  confidence: 'low' | 'medium' | 'high';
-  aiSummary?: string;
-  duplicateOf?: string;
-  selected: boolean;
-}
-
-interface SwipeDecision {
-  fileId: string;
-  action: 'keep' | 'delete';
-  timestamp: number;
-}
-
-interface SwipeToCleanUIProps {
-  onBack: () => void;
-}
-
-export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
+export default function CleanerUI({ onBack }: CleanerUIProps) {
   const [files, setFiles] = useState<CleanableFile[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [decisions, setDecisions] = useState<SwipeDecision[]>([]);
@@ -67,79 +32,36 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
   const startPosRef = useRef({ x: 0, y: 0 });
 
   // Scan for cleanable files
-  const startScan = async () => {
+  const handleStartScan = async () => {
     setIsLoading(true);
     setError(null);
     setFiles([]);
     setCurrentIndex(0);
     setDecisions([]);
     
-    try {
-      console.log('🚀 Starting integrated scan (sync + cleanup)...');
-      
-      // Step 1: Sync new files first
-      const syncResponse = await fetch('/api/drive/sync?limit=10', {
-        method: 'POST',
-      });
-      
-      if (syncResponse.ok) {
-        const syncData = await syncResponse.json();
-        console.log('✅ Sync completed:', {
-          newFiles: syncData.embeddingCount,
-          totalIndexed: syncData.totalIndexedFiles
-        });
-      }
-      
-      // Step 2: Scan for cleanable files
-      const cleanupResponse = await fetch('/api/drive/cleaner/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          maxFiles: 5,
-          includeContent: true,
-          enableAI: true,
-          ownedOnly: true
-        }),
-      });
-      
-      if (!cleanupResponse.ok) {
-        let errorMessage = 'Failed to scan files';
-        try {
-          const errorData = await cleanupResponse.json();
-          errorMessage = errorData.error || errorData.details || errorMessage;
-        } catch (parseError) {
-          errorMessage = `HTTP ${cleanupResponse.status}: ${cleanupResponse.statusText}`;
-        }
-        throw new Error(errorMessage);
-      }
-      
-      const cleanupData = await cleanupResponse.json();
-      
-      if (cleanupData.files && cleanupData.files.length > 0) {
-        const limitedFiles = cleanupData.files.slice(0, 5);
-        setFiles(limitedFiles);
-        console.log(`📱 Loaded ${limitedFiles.length} files for swiping`);
-      } else {
-        setError('No cleanable files found in this batch. Your Drive looks clean! 🎉 Try again to scan more files.');
-      }
-    } catch (error) {
-      console.error('❌ Integrated scan failed:', error);
-      setError(error instanceof Error ? error.message : 'Failed to scan files');
-    } finally {
-      setIsLoading(false);
+    const result = await CleanerApiClient.startScan(5);
+    
+    if (result.error) {
+      setError(result.error);
+    } else {
+      setFiles(result.files);
     }
+    
+    setIsLoading(false);
   };
 
   const currentFile = files[currentIndex];
   const hasMoreFiles = currentIndex < files.length;
   const progress = files.length > 0 ? ((currentIndex) / files.length) * 100 : 0;
 
-  // SIMPLIFIED event handlers - based on working version
+  // Event handlers
+  // Records the initial position when user starts dragging
   const handleStart = (clientX: number, clientY: number) => {
     setIsDragging(true);
     startPosRef.current = { x: clientX, y: clientY };
   };
 
+  // Updates drag offset based on current mouse/touch position
   const handleMove = (clientX: number, clientY: number) => {
     if (!isDragging) return;
     
@@ -148,6 +70,7 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
     setDragOffset({ x: deltaX, y: deltaY });
   };
 
+  // Handles the end of drag gesture, makes decision if threshold is met
   const handleEnd = () => {
     if (!isDragging) return;
     
@@ -163,35 +86,42 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
     setDragOffset({ x: 0, y: 0 });
   };
 
-  // Mouse events - SIMPLIFIED
+  // Mouse event handlers
+  // Prevents default behavior and initiates drag
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
     handleStart(e.clientX, e.clientY);
   };
 
+  // Updates position during mouse drag
   const handleMouseMove = (e: React.MouseEvent) => {
     handleMove(e.clientX, e.clientY);
   };
 
+  // Handles mouse release
   const handleMouseUp = () => {
     handleEnd();
   };
 
-  // Touch events - SIMPLIFIED
+  // Touch event handlers
+  // Initiates drag on touch start
   const handleTouchStart = (e: React.TouchEvent) => {
     const touch = e.touches[0];
     handleStart(touch.clientX, touch.clientY);
   };
 
+  // Updates position during touch drag
   const handleTouchMove = (e: React.TouchEvent) => {
     const touch = e.touches[0];
     handleMove(touch.clientX, touch.clientY);
   };
 
+  // Handles touch end
   const handleTouchEnd = () => {
     handleEnd();
   };
 
+  // Makes a decision to keep or delete the current file
   const makeDecision = async (action: 'keep' | 'delete') => {
     if (!currentFile) return;
     
@@ -203,25 +133,9 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
     
     // If user chose to delete, delete it immediately
     if (action === 'delete') {
-      try {
-        console.log(`🗑️ Deleting file immediately: ${currentFile.name}`);
-        
-        const response = await fetch('/api/drive/cleaner/delete', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            fileIds: [currentFile.id],
-            dryRun: false 
-          }),
-        });
-        
-        if (response.ok) {
-          console.log(`✅ Successfully deleted: ${currentFile.name}`);
-        } else {
-          throw new Error('Delete failed');
-        }
-      } catch (error) {
-        console.error('❌ Failed to delete file:', error);
+      const success = await CleanerApiClient.deleteFile(currentFile.id);
+      if (success) {
+        console.log(`✅ Successfully deleted: ${currentFile.name}`);
       }
     }
     
@@ -229,6 +143,7 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
     setCurrentIndex(prev => prev + 1);
   };
 
+  // Reverts the last decision made
   const undoLastDecision = () => {
     if (decisions.length === 0) return;
     
@@ -236,56 +151,12 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
     setCurrentIndex(prev => Math.max(0, prev - 1));
   };
 
+  // Returns the current swipe hint based on drag offset
   const getSwipeHint = () => {
     const { x } = dragOffset;
     if (Math.abs(x) < 50) return null;
     
     return x > 0 ? 'KEEP' : 'DELETE';
-  };
-
-  const getConfidenceColor = (confidence: string) => {
-    switch (confidence) {
-      case 'high': return 'text-green-400 bg-green-900/30 border-green-700';
-      case 'medium': return 'text-yellow-400 bg-yellow-900/30 border-yellow-700';
-      case 'low': return 'text-red-400 bg-red-900/30 border-red-700';
-      default: return 'text-gray-400 bg-gray-900/30 border-gray-700';
-    }
-  };
-
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'empty': return <XCircle className="w-4 h-4 text-red-400" />;
-      case 'system': return <HardDrive className="w-4 h-4 text-gray-400" />;
-      case 'duplicate': return <Copy className="w-4 h-4 text-purple-400" />;
-      case 'old': return <Clock className="w-4 h-4 text-orange-400" />;
-      case 'low_quality': return <AlertTriangle className="w-4 h-4 text-yellow-400" />;
-      default: return <FileText className="w-4 h-4 text-blue-400" />;
-    }
-  };
-
-  const getFileIcon = (mimeType: string) => {
-    if (mimeType.startsWith('image/')) return <Image className="w-8 h-8 text-purple-400" />;
-    if (mimeType.startsWith('video/')) return <Video className="w-8 h-8 text-red-400" />;
-    if (mimeType.includes('zip') || mimeType.includes('archive')) return <Archive className="w-8 h-8 text-orange-400" />;
-    return <FileText className="w-8 h-8 text-blue-400" />;
-  };
-
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
-  const getFileAge = (modifiedTime: string): string => {
-    const age = Date.now() - new Date(modifiedTime).getTime();
-    const days = Math.floor(age / (24 * 60 * 60 * 1000));
-    
-    if (days < 1) return 'Today';
-    if (days < 7) return `${days} days ago`;
-    if (days < 30) return `${Math.floor(days / 7)} weeks ago`;
-    if (days < 365) return `${Math.floor(days / 30)} months ago`;
-    return `${Math.floor(days / 365)} years ago`;
   };
 
   return (
@@ -381,7 +252,7 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
           transition={{ delay: 0.3, duration: 0.8 }}
         >
           <motion.button
-            onClick={startScan}
+            onClick={handleStartScan}
             disabled={isLoading}
             className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 disabled:from-gray-600 disabled:to-gray-700 rounded-xl transition-all duration-300 shadow-lg"
             whileHover={{ scale: 1.05 }}
@@ -430,7 +301,7 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
               </div>
               <p className="text-red-300">{error}</p>
               <motion.button
-                onClick={startScan}
+                onClick={handleStartScan}
                 className="mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
@@ -468,7 +339,7 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
                     }
                   </p>
                   <motion.button
-                    onClick={startScan}
+                    onClick={handleStartScan}
                     className="px-6 py-3 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 rounded-xl transition-all duration-300 shadow-lg"
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
@@ -477,135 +348,19 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
                   </motion.button>
                 </div>
               </motion.div>
-            ) : (
-              <div
-                ref={cardRef}
-                className="absolute inset-0 cursor-grab active:cursor-grabbing"
-                style={{
-                  transform: `translate(${dragOffset.x}px, ${dragOffset.y}px) rotate(${dragOffset.x * 0.1}deg)`,
-                  transition: isDragging ? 'none' : 'transform 0.3s ease-out',
-                }}
+            ) : currentFile && (
+              <CleanerFileCard
+                file={currentFile}
+                dragOffset={dragOffset}
+                isDragging={isDragging}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
-              >
-                {/* Swipe Hint Overlay */}
-                {getSwipeHint() && (
-                  <div className={`absolute inset-0 flex items-center justify-center z-10 rounded-xl border-4 ${
-                    getSwipeHint() === 'KEEP' 
-                      ? 'bg-green-500/20 border-green-500' 
-                      : 'bg-red-500/20 border-red-500'
-                  }`}>
-                    <div className="text-4xl font-bold">
-                      {getSwipeHint() === 'KEEP' ? '💚 KEEP' : '🗑️ DELETE'}
-                    </div>
-                  </div>
-                )}
-
-                {/* File Card */}
-                <div className="bg-gradient-to-br from-gray-800/90 via-gray-700/90 to-gray-800/90 backdrop-blur-sm border border-pink-500/30 rounded-xl p-6 h-full flex flex-col">
-                  {/* File Header */}
-                  <div className="flex items-start space-x-4 mb-4">
-                    <motion.div 
-                      className="flex-shrink-0"
-                      whileHover={{ scale: 1.1, rotate: 5 }}
-                    >
-                      {getFileIcon(currentFile.mimeType)}
-                    </motion.div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-lg font-medium text-white truncate mb-1">
-                        {currentFile.name}
-                      </h3>
-                      <div className="flex items-center space-x-2 text-sm text-pink-300">
-                        <span>{formatFileSize(currentFile.size)}</span>
-                        <span>•</span>
-                        <span>{getFileAge(currentFile.modifiedTime)}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Category & Confidence */}
-                  <div className="flex items-center space-x-2 mb-4">
-                    <motion.div 
-                      className="flex items-center space-x-1 px-3 py-1 bg-pink-800/50 border border-pink-500/30 rounded-lg"
-                      whileHover={{ scale: 1.05 }}
-                    >
-                      {getCategoryIcon(currentFile.category)}
-                      <span className="text-sm capitalize text-pink-200">{currentFile.category.replace('_', ' ')}</span>
-                    </motion.div>
-                    <motion.div 
-                      className={`px-3 py-1 rounded-lg text-xs border ${getConfidenceColor(currentFile.confidence)}`}
-                      whileHover={{ scale: 1.05 }}
-                    >
-                      {currentFile.confidence} confidence
-                    </motion.div>
-                  </div>
-
-                  {/* AI Analysis */}
-                  {currentFile.aiSummary && (
-                    <motion.div 
-                      className="bg-purple-900/40 border border-purple-500/50 rounded-lg p-3 mb-4 backdrop-blur-sm"
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.2 }}
-                    >
-                      <div className="flex items-center space-x-2 mb-2">
-                        <Brain className="w-4 h-4 text-purple-400" />
-                        <span className="text-sm font-medium text-purple-300">AI Analysis</span>
-                      </div>
-                      <p className="text-sm text-gray-300">{currentFile.aiSummary}</p>
-                    </motion.div>
-                  )}
-
-                  {/* Reason */}
-                  <motion.div 
-                    className="bg-gray-700/50 border border-gray-600/50 rounded-lg p-3 mb-4"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.3 }}
-                  >
-                    <p className="text-sm text-gray-300">
-                      <span className="text-orange-400 font-medium">Reason: </span>
-                      {currentFile.reason}
-                    </p>
-                  </motion.div>
-
-                  {/* Duplicate Info */}
-                  {currentFile.duplicateOf && (
-                    <motion.div 
-                      className="bg-yellow-900/40 border border-yellow-500/50 rounded-lg p-3 mb-4 backdrop-blur-sm"
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.4 }}
-                    >
-                      <div className="flex items-center space-x-2">
-                        <Copy className="w-4 h-4 text-yellow-400" />
-                        <span className="text-sm text-yellow-300">Potential duplicate detected</span>
-                      </div>
-                    </motion.div>
-                  )}
-
-                  {/* File Preview */}
-                  {currentFile.content && (
-                    <motion.div 
-                      className="bg-gray-900/50 border border-gray-600/30 rounded-lg p-3 flex-1 overflow-hidden"
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.5 }}
-                    >
-                      <p className="text-xs text-gray-400 mb-2">Content Preview:</p>
-                      <p className="text-sm text-gray-300 overflow-hidden">
-                        {currentFile.content.substring(0, 200)}
-                        {currentFile.content.length > 200 && '...'}
-                      </p>
-                    </motion.div>
-                  )}
-                </div>
-              </div>
+                swipeHint={getSwipeHint()}
+              />
             )}
           </AnimatePresence>
         </div>
@@ -714,4 +469,4 @@ export default function SwipeToCleanUI({ onBack }: SwipeToCleanUIProps) {
       </div>
     </div>
   );
-}
+} 
