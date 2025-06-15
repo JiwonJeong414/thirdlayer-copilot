@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Perform vector similarity search on user's documents
+    // THIS IS VECTORIZATION: Perform vector similarity search on user's documents
     const results = await VectorService.searchSimilarDocuments(user.id, query, limit);
 
     // Return search results
