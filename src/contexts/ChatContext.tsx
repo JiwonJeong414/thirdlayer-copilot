@@ -247,6 +247,7 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
         driveContext: driveContext.length > 0 ? driveContext.map(ctx => ({
           fileId: ctx.fileId,
           fileName: ctx.fileName,
+          content: ctx.content,
           similarity: ctx.similarity,
         })) : undefined,
       };

@@ -2,37 +2,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@/generated/prisma';
 import { DriveService } from '@/lib/DriveService';
+import { FileInfo, Cluster, SelectedClusterInfo } from '@/types';
 
 const prisma = new PrismaClient();
 const driveService = DriveService.getInstance();
-
-interface FileInfo {
-  fileId: string;
-  fileName: string;
-  name?: string;
-  confidence: number;
-  keywords: string[];
-}
-
-interface Cluster {
-  id: string;
-  name: string;
-  suggestedFolderName?: string;
-  files: FileInfo[];
-}
-
-interface SelectedClusterInfo {
-  id: string;
-  name: string;
-  fileCount: number;
-  category: string;
-  files: Array<{
-    fileId: string;
-    fileName: string;
-    confidence: number;
-    keywords: string[];
-  }>;
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -215,9 +188,22 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Error in organization:', error);
+    
+    // Handle specific error types
+    if (error instanceof Error) {
+      if (error.message.includes('File not found')) {
+        return NextResponse.json({ 
+          error: 'Some files could not be accessed',
+          details: error.message,
+          type: 'FILE_ACCESS_ERROR'
+        }, { status: 400 });
+      }
+    }
+
     return NextResponse.json({ 
       error: 'Failed to organize files',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
+      type: 'INTERNAL_ERROR'
     }, { status: 500 });
   }
 }
@@ -242,19 +228,40 @@ async function analyzeAndOrganize(userId: string, options: {
   // Get file contents and create embeddings
   const fileContents = await Promise.all(
     indexedFiles.map(async (file) => {
-      const content = await driveService.getFileContent(file.fileId);
-      return {
-        id: file.fileId,
-        name: file.fileName,
-        content
-      };
+      try {
+        const content = await driveService.getFileContent(file.fileId);
+        return {
+          id: file.fileId,
+          name: file.fileName,
+          content,
+          error: null
+        };
+      } catch (error) {
+        console.error(`Failed to get content for file ${file.fileName} (${file.fileId}):`, error);
+        return {
+          id: file.fileId,
+          name: file.fileName,
+          content: '',
+          error: error instanceof Error ? error.message : 'Unknown error'
+        };
+      }
     })
   );
+
+  // Filter out files that couldn't be accessed
+  const accessibleFiles = fileContents.filter(file => !file.error);
+  const inaccessibleFiles = fileContents.filter(file => file.error);
+
+  if (inaccessibleFiles.length > 0) {
+    console.warn(`⚠️ ${inaccessibleFiles.length} files could not be accessed:`, 
+      inaccessibleFiles.map(f => `${f.name} (${f.id}): ${f.error}`).join(', ')
+    );
+  }
 
   // TODO: Implement clustering logic here
   // For now, return a simple mock analysis
   return {
-    clusters: fileContents.map((file, index) => ({
+    clusters: accessibleFiles.map((file, index) => ({
       id: `cluster-${index}`,
       name: `Cluster ${index + 1}`,
       files: [{
@@ -264,7 +271,18 @@ async function analyzeAndOrganize(userId: string, options: {
         confidence: 1.0,
         keywords: []
       }]
-    }))
+    })),
+    inaccessibleFiles: inaccessibleFiles.map(file => ({
+      fileId: file.id,
+      name: file.name,
+      error: file.error
+    })),
+    summary: {
+      totalFiles: accessibleFiles.length,
+      clustersCreated: accessibleFiles.length,
+      organizationScore: 1.0,
+      inaccessibleFiles: inaccessibleFiles.length
+    }
   };
 }
 

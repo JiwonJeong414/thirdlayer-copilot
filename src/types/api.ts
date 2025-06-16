@@ -37,6 +37,16 @@ export interface ChatCompletionResponse {
   eval_duration?: number;
 }
 
+export interface ChatStreamResponse {
+  model: string;
+  created_at: string;
+  message?: {
+    role: 'user' | 'assistant' | 'system';
+    content: string;
+  };
+  done: boolean;
+}
+
 export interface SyncRequest {
   limit?: number;
   force?: boolean;

@@ -10,8 +10,8 @@ export interface IndexedFile {
   docType?: string;
 }
 
-// Represents a search result from document search
-export interface SearchResult {
+// Represents a search result or drive context
+export interface DriveContext {
   content: string;     // The matching content snippet
   fileName: string;    // Name of the file containing the match
   fileId: string;      // Google Drive file ID
@@ -36,11 +36,25 @@ export interface DriveContextType {
   indexedFiles: IndexedFile[];           // List of indexed files
   isSync: boolean;                       // Whether a sync is in progress
   syncProgress: SyncProgress | null;     // Current sync progress
-  searchResults: SearchResult[];         // Current search results
+  searchResults: DriveContext[];         // Current search results
   isSearching: boolean;                  // Whether a search is in progress
   syncDrive: () => Promise<void>;        // Start a new sync
-  searchDocuments: (query: string, limit?: number) => Promise<SearchResult[]>;  // Search documents
+  searchDocuments: (query: string, limit?: number) => Promise<DriveContext[]>;  // Search documents
   fetchIndexedFiles: () => Promise<void>;  // Fetch list of indexed files
   clearSearch: () => void;               // Clear current search results
   refreshIndexedFiles: () => Promise<void>;  // Refresh the indexed files list
+}
+
+// src/types/drive.ts - Drive and document types
+export interface DriveCredentials {
+  access_token: string;
+  refresh_token?: string;
+  expiry_date?: number;
+}
+
+export interface DriveConnectionStatus {
+  isConnected: boolean;
+  connectedAt?: Date;
+  lastSyncAt?: Date;
+  indexedFiles: number;
 } 

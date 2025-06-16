@@ -185,7 +185,7 @@ export default function OrganizerDashboard({ onBack }: { onBack: () => void }) {
                   <FileText className="w-6 h-6 text-blue-400" />
                   <div>
                     <p className="text-sm text-gray-400">Files Analyzed</p>
-                    <p className="text-2xl font-bold text-white">{suggestion.summary.totalFiles}</p>
+                    <p className="text-2xl font-bold text-white">{suggestion?.summary?.totalFiles ?? 0}</p>
                   </div>
                 </div>
               </div>
@@ -195,7 +195,7 @@ export default function OrganizerDashboard({ onBack }: { onBack: () => void }) {
                   <Folder className="w-6 h-6 text-green-400" />
                   <div>
                     <p className="text-sm text-gray-400">Clusters Created</p>
-                    <p className="text-2xl font-bold text-white">{suggestion.summary.clustersCreated}</p>
+                    <p className="text-2xl font-bold text-white">{suggestion?.summary?.clustersCreated ?? 0}</p>
                   </div>
                 </div>
               </div>

@@ -1,21 +1,9 @@
 import { google, drive_v3 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import { PrismaClient } from '@/generated/prisma';
+import { DriveCredentials, DriveConnectionStatus } from '@/types';
 
 const prisma = new PrismaClient();
-
-export interface DriveCredentials {
-  access_token: string;
-  refresh_token?: string;
-  expiry_date?: number;
-}
-
-export interface DriveConnectionStatus {
-  isConnected: boolean;
-  connectedAt?: Date;
-  lastSyncAt?: Date;
-  indexedFiles: number;
-}
 
 /**
  * SINGLE source of truth for ALL Google Drive operations
@@ -188,25 +176,32 @@ export class DriveService {
   }
 
   async getFileContent(fileId: string): Promise<string> {
-    const file = await this.drive.files.get({
-      fileId,
-      fields: 'mimeType, name, capabilities'
-    });
+    try {
+      const file = await this.drive.files.get({
+        fileId,
+        fields: 'mimeType, name, capabilities'
+      });
 
-    const mimeType = file.data.mimeType!;
-    const fileName = file.data.name || 'Unknown';
+      const mimeType = file.data.mimeType!;
+      const fileName = file.data.name || 'Unknown';
 
-    switch (mimeType) {
-      case 'application/vnd.google-apps.document':
-        return this.exportAsText(fileId);
-      case 'application/vnd.google-apps.spreadsheet':
-        return this.exportAsCSV(fileId);
-      case 'application/vnd.google-apps.presentation':
-        return this.exportAsText(fileId);
-      case 'text/plain':
-        return this.getPlainText(fileId);
-      default:
-        throw new Error(`Unsupported file type: ${mimeType}`);
+      switch (mimeType) {
+        case 'application/vnd.google-apps.document':
+          return this.exportAsText(fileId);
+        case 'application/vnd.google-apps.spreadsheet':
+          return this.exportAsCSV(fileId);
+        case 'application/vnd.google-apps.presentation':
+          return this.exportAsText(fileId);
+        case 'text/plain':
+          return this.getPlainText(fileId);
+        default:
+          throw new Error(`Unsupported file type: ${mimeType}`);
+      }
+    } catch (error: any) {
+      if (error.code === 404) {
+        throw new Error(`File not found or no longer accessible: ${fileId}`);
+      }
+      throw error;
     }
   }
 

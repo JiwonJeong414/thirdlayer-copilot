@@ -4,8 +4,29 @@ export type ClusterCategory = 'work' | 'personal' | 'media' | 'documents' | 'arc
 export interface FileInfo {
   fileId: string;
   fileName: string;
+  name?: string;
   confidence: number;
   keywords: string[];
+}
+
+export interface Cluster {
+  id: string;
+  name: string;
+  suggestedFolderName?: string;
+  files: FileInfo[];
+}
+
+export interface SelectedClusterInfo {
+  id: string;
+  name: string;
+  fileCount: number;
+  category: string;
+  files: Array<{
+    fileId: string;
+    fileName: string;
+    confidence: number;
+    keywords: string[];
+  }>;
 }
 
 export interface FileCluster {

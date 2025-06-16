@@ -1,3 +1,5 @@
+import { DriveContext } from './drive';
+
 // src/types/chat.ts
 
 // Chat message structure
@@ -8,14 +10,6 @@ export interface Message {
   timestamp: string;
   images: string[];
   driveContext?: DriveContext[];
-}
-
-// Drive context for messages
-export interface DriveContext {
-  fileId: string;
-  fileName: string;
-  content?: string;
-  similarity: number;
 }
 
 // Chat structure
@@ -46,14 +40,4 @@ export interface ChatContextType {
   fetchChats: () => Promise<void>;
   fetchModels: () => Promise<void>;
   clearCurrentChat: () => void;
-}
-
-export interface ChatStreamResponse {
-  model: string;
-  created_at: string;
-  message?: {
-    role: 'user' | 'assistant' | 'system';
-    content: string;
-  };
-  done: boolean;
 }
