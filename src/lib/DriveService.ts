@@ -408,4 +408,4 @@ export class DriveService {
       return `${fileType}: ${fileName}\nError: Could not extract content or metadata.`;
     }
   }
-} 
+}
