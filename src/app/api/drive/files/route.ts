@@ -2,7 +2,7 @@
 // src/app/api/drive/files/route.ts - Updated for session-based auth
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@/generated/prisma';
-import { VectorService } from '@/lib/vectorService';
+import { VectorService } from '@/lib/VectorService';
 
 const prisma = new PrismaClient();
 

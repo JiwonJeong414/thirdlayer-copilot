@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@/generated/prisma';
 import { DriveService } from '@/lib/DriveService';
-import { VectorService } from '@/lib/vectorService';
+import { VectorService } from '@/lib/VectorService';
 
 const prisma = new PrismaClient();
 

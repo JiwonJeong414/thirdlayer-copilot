@@ -29,7 +29,7 @@ interface SyncProgress {
 }
 
 export const DriveConnectionPanel = () => {
-  const { driveConnection, user } = useAuth();
+  const { driveConnection, user, refreshDriveConnection } = useAuth();
   const { indexedFiles, isSync } = useDrive();
   const [showDetails, setShowDetails] = useState(false);
   const [showSyncModal, setShowSyncModal] = useState(false);
@@ -153,7 +153,11 @@ export const DriveConnectionPanel = () => {
     }
 
     try {
-      const response = await fetch('/api/drive/auth-url');
+      const response = await fetch('/api/drive?auth=true', {
+        headers: {
+          'x-user-id': user.id
+        }
+      });
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to get auth URL');
@@ -164,6 +168,34 @@ export const DriveConnectionPanel = () => {
     } catch (error) {
       console.error('Error connecting to Drive:', error);
       alert(`Failed to connect to Drive: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  // Update the OAuth callback handler
+  const handleOAuthCallback = async (code: string, state: string) => {
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
+
+    try {
+      const response = await fetch('/api/drive', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': user.id
+        },
+        body: JSON.stringify({ code, state })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to connect Drive');
+      }
+
+      // Refresh the drive connection status
+      await refreshDriveConnection();
+    } catch (error) {
+      console.error('Error connecting Drive:', error);
+      throw error;
     }
   };
 

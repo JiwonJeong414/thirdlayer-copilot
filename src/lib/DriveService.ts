@@ -246,6 +246,32 @@ export class DriveService {
     await this.drive.files.delete({ fileId });
   }
 
+  async getFileInfo(fileId: string): Promise<{
+    id: string;
+    name: string;
+    size: number;
+    mimeType: string;
+    ownedByMe: boolean;
+    owners: Array<{ emailAddress: string; displayName: string }>;
+  }> {
+    const response = await this.drive.files.get({
+      fileId,
+      fields: 'id, name, size, mimeType, ownedByMe, owners'
+    });
+
+    return {
+      id: response.data.id!,
+      name: response.data.name!,
+      size: Number(response.data.size) || 0,
+      mimeType: response.data.mimeType!,
+      ownedByMe: response.data.ownedByMe || false,
+      owners: (response.data.owners || []).map(owner => ({
+        emailAddress: owner.emailAddress || '',
+        displayName: owner.displayName || ''
+      }))
+    };
+  }
+
   // ===================================================================
   // PRIVATE HELPERS
   // ===================================================================

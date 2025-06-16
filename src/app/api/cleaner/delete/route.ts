@@ -1,9 +1,10 @@
 // src/app/api/cleaner/delete/route.ts - FIXED with ownership check
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@/generated/prisma';
-import { google } from 'googleapis';
+import { DriveService } from '@/lib/DriveService';
 
 const prisma = new PrismaClient();
+const driveService = DriveService.getInstance();
 
 export async function POST(request: NextRequest) {
   try {
@@ -45,18 +46,8 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      process.env.GOOGLE_REDIRECT_URI
-    );
-
-    oauth2Client.setCredentials({
-      access_token: user.driveConnection.accessToken,
-      refresh_token: user.driveConnection.refreshToken,
-    });
-
-    const drive = google.drive({ version: 'v3', auth: oauth2Client });
+    // Authenticate the user with DriveService
+    await driveService.authenticateUser(userId);
 
     let deletedCount = 0;
     let errorCount = 0;
@@ -68,25 +59,22 @@ export async function POST(request: NextRequest) {
       const fileId = fileIds[i];
       
       try {
-        // FIXED: Check file ownership before deleting
-        const fileInfo = await drive.files.get({
-          fileId,
-          fields: 'name, size, mimeType, ownedByMe, owners'
-        });
+        // Check file ownership before deleting
+        const fileInfo = await driveService.getFileInfo(fileId);
 
         // SAFETY CHECK: Only delete files owned by the user
-        if (fileInfo.data.ownedByMe !== true) {
-          console.log(`⚠️ SKIPPING: File not owned by user: ${fileInfo.data.name}`);
-          skippedFiles.push(fileInfo.data.name || fileId);
+        if (!fileInfo.ownedByMe) {
+          console.log(`⚠️ SKIPPING: File not owned by user: ${fileInfo.name}`);
+          skippedFiles.push(fileInfo.name || fileId);
           continue;
         }
 
-        await drive.files.delete({ fileId });
+        await driveService.deleteFile(fileId);
         
         deletedCount++;
-        deletedFiles.push(fileInfo.data.name || fileId);
+        deletedFiles.push(fileInfo.name || fileId);
         
-        console.log(`✅ Deleted (${i + 1}/${fileIds.length}): ${fileInfo.data.name} (${fileInfo.data.size} bytes)`);
+        console.log(`✅ Deleted (${i + 1}/${fileIds.length}): ${fileInfo.name} (${fileInfo.size} bytes)`);
         
         if (i < fileIds.length - 1) {
           await new Promise(resolve => setTimeout(resolve, 200)); // Slower for safety
@@ -137,7 +125,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error in file deletion:', error);
+    console.error('Error in delete operation:', error);
     return NextResponse.json({ 
       error: 'Failed to delete files',
       details: error instanceof Error ? error.message : 'Unknown error'

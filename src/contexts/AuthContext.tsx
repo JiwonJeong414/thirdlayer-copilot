@@ -75,7 +75,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (!user) return;
 
     try {
-      const response = await fetch('/api/drive/status');
+      const response = await fetch('/api/drive', {
+        headers: {
+          'x-user-id': user.id
+        }
+      });
       if (response.ok) {
         const data = await response.json();
         setDriveConnection(data);

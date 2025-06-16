@@ -4,6 +4,7 @@ import { PrismaClient } from '@/generated/prisma';
 import { DriveService } from '@/lib/DriveService';
 
 const prisma = new PrismaClient();
+const driveService = DriveService.getInstance();
 
 interface FileInfo {
   fileId: string;
@@ -21,9 +22,16 @@ interface Cluster {
 }
 
 interface SelectedClusterInfo {
+  id: string;
   name: string;
   fileCount: number;
-  files?: FileInfo[];
+  category: string;
+  files: Array<{
+    fileId: string;
+    fileName: string;
+    confidence: number;
+    keywords: string[];
+  }>;
 }
 
 export async function POST(request: NextRequest) {
@@ -85,8 +93,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`📊 Found ${indexedFilesCount.length} indexed files to organize`);
 
-    // Create Drive service
-    const driveService = DriveService.getInstance();
+    // Authenticate user with DriveService
     await driveService.authenticateUser(userId);
 
     // EXECUTION MODE: If this is execution mode (not dry run) and we have selected clusters
@@ -110,76 +117,27 @@ export async function POST(request: NextRequest) {
       
       console.log('📋 Selected Cluster Info from UI:');
       selectedClusterInfo.forEach((info: SelectedClusterInfo, idx: number) => {
-        console.log(`  ${idx}: { name: "${info.name}", fileCount: ${info.fileCount}, files: [${info.files?.slice(0, 3).map(f => f.name || f.fileName).join(', ')}${info.files && info.files.length > 3 ? '...' : ''}] }`);
+        console.log(`  ${idx}: { name: "${info.name}", fileCount: ${info.fileCount}, files: [${info.files?.slice(0, 3).map(f => f.fileName).join(', ')}${info.files && info.files.length > 3 ? '...' : ''}] }`);
       });
 
       // FIXED: Exact matching using the file lists from selectedClusterInfo
       const selectedClusterData: Cluster[] = [];
-      
       for (const selectedInfo of selectedClusterInfo) {
-        console.log(`🎯 Looking for cluster: ${selectedInfo.name} with ${selectedInfo.fileCount} files`);
-        
-        // Try to find exact match by comparing file IDs
-        let matchingCluster = null;
-        
-        if (selectedInfo.files && selectedInfo.files.length > 0) {
-          // Get file IDs from selected cluster
-          const selectedFileIds = new Set(selectedInfo.files.map((f: FileInfo) => f.fileId));
-          
-          // Find cluster with matching files
-          matchingCluster = fullAnalysis.clusters.find(cluster => {
-            const clusterFileIds = new Set(cluster.files.map(f => f.fileId));
+        const matchingCluster = fullAnalysis.clusters.find(c => {
+          // Match by name
+          if (c.name === selectedInfo.name) {
+            // Verify file lists match
+            const selectedFileIds = new Set(selectedInfo.files.map((f: { fileId: string }) => f.fileId));
+            const clusterFileIds = new Set(c.files.map((f: FileInfo) => f.fileId));
             
-            // Check if at least 80% of selected files are in this cluster
-            const intersection = new Set([...selectedFileIds].filter(id => clusterFileIds.has(id as string)));
-            const overlapPercentage = intersection.size / selectedFileIds.size;
-            
-            console.log(`  Checking cluster "${cluster.name}": ${intersection.size}/${selectedFileIds.size} files match (${Math.round(overlapPercentage * 100)}%)`);
-            
-            return overlapPercentage >= 0.8; // 80% overlap required
-          });
-          
-          if (matchingCluster) {
-            // IMPORTANT: Filter the cluster to only include the originally selected files
-            const filteredFiles = matchingCluster.files.filter(file => 
-              selectedFileIds.has(file.fileId)
-            );
-            
-            // Create a new cluster object with only the selected files
-            const exactCluster: Cluster = {
-              ...matchingCluster,
-              files: filteredFiles,
-              name: selectedInfo.name, 
-              suggestedFolderName: selectedInfo.name.replace(/[^a-zA-Z0-9\s\-_]/g, '').trim()
-            };
-            
-            selectedClusterData.push(exactCluster);
-            console.log(`✅ Exact match found: "${exactCluster.name}" with ${exactCluster.files.length} files (filtered from ${matchingCluster.files.length})`);
+            // Check if all files in selected cluster are in the full analysis cluster
+            return selectedInfo.files.every((f: { fileId: string }) => clusterFileIds.has(f.fileId));
           }
-        }
-        
-        // Fallback: try name matching if file matching failed
-        if (!matchingCluster) {
-          matchingCluster = fullAnalysis.clusters.find(cluster =>
-            cluster.name === selectedInfo.name ||
-            cluster.name.toLowerCase().includes(selectedInfo.name.toLowerCase()) ||
-            selectedInfo.name.toLowerCase().includes(cluster.name.toLowerCase())
-          );
-          
-          if (matchingCluster) {
-            // Use the original selected name
-            const matchedCluster: Cluster = {
-              ...matchingCluster,
-              name: selectedInfo.name,
-              suggestedFolderName: selectedInfo.name.replace(/[^a-zA-Z0-9\s\-_]/g, '').trim()
-            };
-            selectedClusterData.push(matchedCluster);
-            console.log(`✅ Name-based match: "${matchedCluster.name}" with ${matchedCluster.files.length} files`);
-          }
-        }
-        
-        if (!matchingCluster) {
-          console.log(`❌ Could not match cluster: ${selectedInfo.name}`);
+          return false;
+        });
+
+        if (matchingCluster) {
+          selectedClusterData.push(matchingCluster);
         }
       }
 
@@ -236,12 +194,15 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        message: 'Organization completed',
-        results: executionResults
+        summary: {
+          totalClusters: selectedClusterData.length,
+          totalFiles: selectedClusterData.reduce((sum, c) => sum + c.files.length, 0),
+          results: executionResults
+        }
       });
     }
 
-    // ANALYSIS MODE: Run analysis and return clusters
+    // ANALYSIS MODE: Run analysis and return suggestions
     const analysis = await analyzeAndOrganize(userId, {
       method,
       maxClusters,
@@ -251,10 +212,11 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json(analysis);
+
   } catch (error) {
-    console.error('Error during organization:', error);
+    console.error('Error in organization:', error);
     return NextResponse.json({ 
-      error: 'Organization failed',
+      error: 'Failed to organize files',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }
@@ -280,7 +242,6 @@ async function analyzeAndOrganize(userId: string, options: {
   // Get file contents and create embeddings
   const fileContents = await Promise.all(
     indexedFiles.map(async (file) => {
-      const driveService = DriveService.getInstance();
       const content = await driveService.getFileContent(file.fileId);
       return {
         id: file.fileId,
