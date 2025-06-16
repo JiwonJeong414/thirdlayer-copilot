@@ -185,23 +185,48 @@ export class DriveService {
       const mimeType = file.data.mimeType!;
       const fileName = file.data.name || 'Unknown';
 
+      console.log(`📄 Processing ${fileName} (${mimeType})`);
+
       switch (mimeType) {
         case 'application/vnd.google-apps.document':
+          console.log(`📄 Google Doc detected: ${fileName} - exporting as text...`);
           return this.exportAsText(fileId);
         case 'application/vnd.google-apps.spreadsheet':
+          console.log(`📊 Google Sheet detected: ${fileName} - exporting as CSV...`);
           return this.exportAsCSV(fileId);
         case 'application/vnd.google-apps.presentation':
+          console.log(`📽️ Google Slides detected: ${fileName} - exporting as text...`);
           return this.exportAsText(fileId);
         case 'text/plain':
+          console.log(`📄 Plain text detected: ${fileName} - reading content...`);
           return this.getPlainText(fileId);
+        case 'application/pdf':
+          console.log(`📄 PDF detected: ${fileName} - extracting metadata...`);
+          return this.extractPDFText(fileId, fileName);
+        case 'application/msword':
+        case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+          console.log(`📄 Word document detected: ${fileName} - extracting metadata...`);
+          return this.extractDocumentText(fileId, fileName);
+        case 'application/vnd.ms-excel':
+        case 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+          console.log(`📊 Excel document detected: ${fileName} - extracting metadata...`);
+          return this.extractSpreadsheetText(fileId, fileName);
+        case 'application/vnd.ms-powerpoint':
+        case 'application/vnd.openxmlformats-officedocument.presentationml.presentation':
+          console.log(`📽️ PowerPoint detected: ${fileName} - extracting metadata...`);
+          return this.extractPresentationText(fileId, fileName);
         default:
-          throw new Error(`Unsupported file type: ${mimeType}`);
+          console.log(`⚠️ Unsupported file type: ${fileName} (${mimeType}) - returning filename as content`);
+          // Instead of throwing error, return basic file info
+          return `File: ${fileName}\nType: ${mimeType}\nThis file type cannot be processed for content extraction.`;
       }
     } catch (error: any) {
       if (error.code === 404) {
         throw new Error(`File not found or no longer accessible: ${fileId}`);
       }
-      throw error;
+      console.error(`❌ Error processing file ${fileId}:`, error);
+      // Return a fallback instead of throwing
+      return `Error processing file: ${error.message || 'Unknown error'}`;
     }
   }
 
@@ -268,7 +293,7 @@ export class DriveService {
   }
 
   // ===================================================================
-  // PRIVATE HELPERS
+  // PRIVATE HELPERS - Enhanced with more file type support
   // ===================================================================
 
   private async exportAsText(fileId: string): Promise<string> {
@@ -294,4 +319,93 @@ export class DriveService {
     });
     return response.data as string;
   }
-} 
+
+  private async extractPDFText(fileId: string, fileName: string): Promise<string> {
+    try {
+      // For PDFs, we can't directly extract text through Google Drive API
+      // But we can provide meaningful metadata and encourage manual processing
+      console.log(`📄 PDF file: ${fileName} - providing metadata as content`);
+      
+      // Get file metadata
+      const fileInfo = await this.drive.files.get({
+        fileId,
+        fields: 'name, size, modifiedTime, description, properties'
+      });
+      
+      let content = `PDF Document: ${fileName}\n`;
+      content += `File Size: ${fileInfo.data.size ? `${Math.round(parseInt(fileInfo.data.size) / 1024)} KB` : 'Unknown'}\n`;
+      content += `Modified: ${fileInfo.data.modifiedTime ? new Date(fileInfo.data.modifiedTime).toLocaleDateString() : 'Unknown'}\n`;
+      
+      if (fileInfo.data.description) {
+        content += `Description: ${fileInfo.data.description}\n`;
+      }
+      
+      content += `\nNote: This is a PDF file. For full text extraction, consider using a dedicated PDF processing service.`;
+      
+      return content;
+    } catch (error) {
+      console.error(`❌ Error extracting PDF metadata for ${fileName}:`, error);
+      return `PDF Document: ${fileName}\nError: Could not extract content from PDF file.`;
+    }
+  }
+
+  private async extractDocumentText(fileId: string, fileName: string): Promise<string> {
+    try {
+      console.log(`📄 Attempting to extract Word document metadata: ${fileName}`);
+      return this.getFileMetadataAsContent(fileId, fileName, 'Word Document');
+    } catch (error) {
+      console.log(`⚠️ Could not extract Word content, providing basic info for ${fileName}`);
+      return `Word Document: ${fileName}\nError: Could not extract content or metadata.`;
+    }
+  }
+
+  private async extractSpreadsheetText(fileId: string, fileName: string): Promise<string> {
+    try {
+      console.log(`📊 Attempting to extract Excel document metadata: ${fileName}`);
+      return this.getFileMetadataAsContent(fileId, fileName, 'Excel Spreadsheet');
+    } catch (error) {
+      console.log(`⚠️ Could not extract Excel content, providing basic info for ${fileName}`);
+      return `Excel Spreadsheet: ${fileName}\nError: Could not extract content or metadata.`;
+    }
+  }
+
+  private async extractPresentationText(fileId: string, fileName: string): Promise<string> {
+    try {
+      console.log(`📽️ Attempting to extract PowerPoint metadata: ${fileName}`);
+      return this.getFileMetadataAsContent(fileId, fileName, 'PowerPoint Presentation');
+    } catch (error) {
+      console.log(`⚠️ Could not extract PowerPoint content, providing basic info for ${fileName}`);
+      return `PowerPoint Presentation: ${fileName}\nError: Could not extract content or metadata.`;
+    }
+  }
+
+  private async getFileMetadataAsContent(fileId: string, fileName: string, fileType: string): Promise<string> {
+    try {
+      const fileInfo = await this.drive.files.get({
+        fileId,
+        fields: 'name, size, modifiedTime, description, properties, createdTime'
+      });
+      
+      let content = `${fileType}: ${fileName}\n`;
+      content += `File Size: ${fileInfo.data.size ? `${Math.round(parseInt(fileInfo.data.size) / 1024)} KB` : 'Unknown'}\n`;
+      content += `Created: ${fileInfo.data.createdTime ? new Date(fileInfo.data.createdTime).toLocaleDateString() : 'Unknown'}\n`;
+      content += `Modified: ${fileInfo.data.modifiedTime ? new Date(fileInfo.data.modifiedTime).toLocaleDateString() : 'Unknown'}\n`;
+      
+      if (fileInfo.data.description) {
+        content += `Description: ${fileInfo.data.description}\n`;
+      }
+      
+      // Add properties if they exist
+      if (fileInfo.data.properties) {
+        content += `Properties: ${JSON.stringify(fileInfo.data.properties)}\n`;
+      }
+      
+      content += `\nNote: This file's content could not be directly extracted, but it can be found using filename and metadata searches.`;
+      
+      return content;
+    } catch (error) {
+      console.error(`❌ Error getting metadata for ${fileName}:`, error);
+      return `${fileType}: ${fileName}\nError: Could not extract content or metadata.`;
+    }
+  }
+}
