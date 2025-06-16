@@ -1,4 +1,4 @@
-// src/app/api/cleaner/delete/route.ts - FIXED with ownership check
+// src/app/api/cleaner/delete/route.ts - FIXED VERSION
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@/generated/prisma';
 import { DriveService } from '@/lib/DriveService';
@@ -14,36 +14,21 @@ export async function POST(request: NextRequest) {
     }
 
     const { fileIds, dryRun = false } = await request.json();
-    
-    if (!fileIds || !Array.isArray(fileIds) || fileIds.length === 0) {
-      return NextResponse.json({ error: 'No files specified for deletion' }, { status: 400 });
-    }
-
-    if (fileIds.length > 20) {
-      return NextResponse.json({ 
-        error: 'Too many files selected. Please delete in smaller batches (max 20).' 
-      }, { status: 400 });
-    }
-
     const { userId } = JSON.parse(session.value);
+
+    if (!Array.isArray(fileIds) || fileIds.length === 0) {
+      return NextResponse.json({ error: 'No file IDs provided' }, { status: 400 });
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: userId },
       include: { driveConnection: true },
     });
 
     if (!user || !user.driveConnection?.isConnected) {
-      return NextResponse.json({ error: 'Drive not connected' }, { status: 400 });
-    }
-
-    console.log(`🗑️ ${dryRun ? 'DRY RUN:' : ''} Deleting ${fileIds.length} files for user ${userId}`);
-
-    if (dryRun) {
       return NextResponse.json({
-        success: true,
-        dryRun: true,
-        wouldDelete: fileIds.length,
-        message: `Would delete ${fileIds.length} files. Use dryRun=false to actually delete.`
-      });
+        error: 'Drive not connected'
+      }, { status: 400 });
     }
 
     // Authenticate the user with DriveService
@@ -51,48 +36,71 @@ export async function POST(request: NextRequest) {
 
     let deletedCount = 0;
     let errorCount = 0;
-    const errors: string[] = [];
     const deletedFiles: string[] = [];
     const skippedFiles: string[] = [];
+    const errorFiles: string[] = [];
+
+    console.log(`🗑️ ${dryRun ? 'DRY RUN: Would delete' : 'Deleting'} ${fileIds.length} files...`);
 
     for (let i = 0; i < fileIds.length; i++) {
       const fileId = fileIds[i];
       
       try {
-        // Check file ownership before deleting
-        const fileInfo = await driveService.getFileInfo(fileId);
+        let fileName = `File ${fileId}`;
+        let shouldDelete = true;
 
-        // SAFETY CHECK: Only delete files owned by the user
-        if (!fileInfo.ownedByMe) {
-          console.log(`⚠️ SKIPPING: File not owned by user: ${fileInfo.name}`);
-          skippedFiles.push(fileInfo.name || fileId);
-          continue;
+        try {
+          // Try to get file info
+          const fileInfo = await driveService.getFileInfo(fileId);
+          fileName = fileInfo.name;
+
+          // SAFETY CHECK: Only delete files owned by the user
+          if (!fileInfo.ownedByMe) {
+            console.log(`⚠️ SKIPPING: File not owned by user: ${fileName}`);
+            skippedFiles.push(fileName);
+            shouldDelete = false;
+          }
+        } catch (infoError: any) {
+          // File doesn't exist in Drive anymore
+          if (infoError.code === 404 || infoError.status === 404 || infoError.message?.includes('File not found')) {
+            console.log(`ℹ️ File already deleted from Drive: ${fileId}`);
+            fileName = `${fileId} (already deleted)`;
+            shouldDelete = false; // Don't try to delete again
+            deletedCount++; // Count as successful
+            deletedFiles.push(fileName);
+          } else {
+            throw infoError; // Re-throw other errors
+          }
         }
 
-        await driveService.deleteFile(fileId);
-        
-        deletedCount++;
-        deletedFiles.push(fileInfo.name || fileId);
-        
-        console.log(`✅ Deleted (${i + 1}/${fileIds.length}): ${fileInfo.name} (${fileInfo.size} bytes)`);
-        
+        if (shouldDelete && !dryRun) {
+          await driveService.deleteFile(fileId);
+          deletedCount++;
+          deletedFiles.push(fileName);
+          console.log(`✅ Deleted (${i + 1}/${fileIds.length}): ${fileName}`);
+        }
+
+        // Clean up database reference regardless
+        await prisma.document.deleteMany({
+          where: { 
+            driveId: fileId,
+            userId: user.id 
+          }
+        });
+
+        // Add small delay for API rate limiting
         if (i < fileIds.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 200)); // Slower for safety
+          await new Promise(resolve => setTimeout(resolve, 200));
         }
         
-      } catch (error) {
+      } catch (error: any) {
+        console.error(`❌ Failed to delete ${fileId}:`, error.message);
         errorCount++;
-        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        errors.push(`${fileId}: ${errorMsg}`);
-        console.error(`❌ Failed to delete file ${fileId}:`, error);
-        
-        // If it's a permission error, mention it
-        if (errorMsg.includes('write access') || errorMsg.includes('403')) {
-          console.error(`🚫 Permission denied for file ${fileId} - likely not owned by user`);
-        }
+        errorFiles.push(fileId);
       }
     }
 
+    // Log cleanup activity
     try {
       await prisma.cleanupActivity.create({
         data: {
@@ -112,16 +120,14 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      deletedCount,
-      errorCount,
-      skippedCount: skippedFiles.length,
-      totalRequested: fileIds.length,
-      errors: errors.slice(0, 5),
-      deletedFiles: deletedFiles.slice(0, 10),
-      skippedFiles: skippedFiles.slice(0, 5),
-      message: errorCount === 0 && skippedFiles.length === 0
-        ? `Successfully deleted all ${deletedCount} files!`
-        : `Deleted ${deletedCount} files. ${skippedFiles.length} skipped (not owned), ${errorCount} errors.`
+      deleted: deletedCount,
+      skipped: skippedFiles.length,
+      errors: errorCount,
+      details: {
+        deletedFiles,
+        skippedFiles,
+        errorFiles
+      }
     });
 
   } catch (error) {
@@ -131,4 +137,4 @@ export async function POST(request: NextRequest) {
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }
-} 
+}
