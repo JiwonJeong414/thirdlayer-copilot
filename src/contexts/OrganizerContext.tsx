@@ -6,84 +6,197 @@ import {
   FileCluster 
 } from '../types/organizer';
 
-// Utility functions for organizer
-const formatClusterName = (files: string[]): string => {
-  // Extract common themes from filenames
-  const words = files.flatMap(name => 
-    name.toLowerCase()
-      .replace(/[^\w\s]/g, ' ')
-      .split(/\s+/)
-      .filter(word => word.length > 3)
-  );
+// K-means clustering implementation
+class ClusteringService {
+  static kMeansClustering(embeddings: number[][], k: number): number[] {
+    const numPoints = embeddings.length;
+    const dimensions = embeddings[0].length;
+    
+    // Initialize centroids randomly
+    let centroids: number[][] = [];
+    for (let i = 0; i < k; i++) {
+      const centroid = new Array(dimensions);
+      for (let j = 0; j < dimensions; j++) {
+        centroid[j] = Math.random() * 2 - 1; // Random between -1 and 1
+      }
+      centroids.push(centroid);
+    }
 
-  const wordFreq = words.reduce((acc, word) => {
-    acc[word] = (acc[word] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
+    let assignments = new Array(numPoints).fill(0);
+    let hasChanged = true;
+    let iterations = 0;
+    const maxIterations = 100;
 
-  const topWords = Object.entries(wordFreq)
-    .sort(([,a], [,b]) => b - a)
-    .slice(0, 2)
-    .map(([word]) => word);
+    while (hasChanged && iterations < maxIterations) {
+      hasChanged = false;
+      iterations++;
 
-  if (topWords.length > 0) {
-    return topWords.map(word => 
-      word.charAt(0).toUpperCase() + word.slice(1)
-    ).join(' ') + ' Files';
+      // Assign each point to nearest centroid
+      for (let i = 0; i < numPoints; i++) {
+        let minDistance = Infinity;
+        let bestCluster = 0;
+
+        for (let j = 0; j < k; j++) {
+          const distance = this.euclideanDistance(embeddings[i], centroids[j]);
+          if (distance < minDistance) {
+            minDistance = distance;
+            bestCluster = j;
+          }
+        }
+
+        if (assignments[i] !== bestCluster) {
+          assignments[i] = bestCluster;
+          hasChanged = true;
+        }
+      }
+
+      // Update centroids
+      for (let j = 0; j < k; j++) {
+        const clusterPoints = embeddings.filter((_, idx) => assignments[idx] === j);
+        
+        if (clusterPoints.length > 0) {
+          for (let dim = 0; dim < dimensions; dim++) {
+            centroids[j][dim] = clusterPoints.reduce((sum, point) => sum + point[dim], 0) / clusterPoints.length;
+          }
+        }
+      }
+    }
+
+    console.log(`🔄 K-means converged after ${iterations} iterations`);
+    return assignments;
   }
 
-  return 'Miscellaneous Files';
-};
+  static euclideanDistance(a: number[], b: number[]): number {
+    return Math.sqrt(a.reduce((sum, val, i) => sum + Math.pow(val - b[i], 2), 0));
+  }
 
-const getClusterColorByCategory = (category: string): string => {
-  const colors = {
-    work: '#3B82F6',
-    personal: '#10B981', 
-    media: '#F59E0B',
-    documents: '#8B5CF6',
-    archive: '#6B7280',
-    mixed: '#EF4444'
-  };
-  return colors[category as keyof typeof colors] || colors.mixed;
-};
+  static analyzeClusterTheme(files: FileWithEmbedding[]): {
+    name: string;
+    description: string;
+    folderName: string;
+    category: FileCluster['category'];
+    keywords: string[];
+  } {
+    // Get file metadata for better analysis
+    const fileNames = files.map(f => f.fileName.toLowerCase());
+    const allText = files.map(f => f.content?.substring(0, 200) || '').join(' ').toLowerCase();
 
-const calculateOrganizationScore = (clusters: FileCluster[]): number => {
-  if (clusters.length === 0) return 0;
-  
-  const totalFiles = clusters.reduce((sum, cluster) => sum + cluster.files.length, 0);
-  const avgConfidence = clusters.reduce((sum, cluster) => {
-    const clusterConfidence = cluster.files.reduce((cSum: number, file: any) => cSum + file.confidence, 0) / cluster.files.length;
-    return sum + clusterConfidence;
-  }, 0) / clusters.length;
+    // Enhanced category detection
+    const categoryScores = {
+      work: 0,
+      personal: 0,
+      media: 0,
+      documents: 0,
+      archive: 0,
+      mixed: 0
+    };
 
-  // Score based on how well files are distributed and confidence
-  const distributionScore = 1 - Math.abs(totalFiles / clusters.length - 5) / 10; // Ideal ~5 files per cluster
-  const confidenceScore = avgConfidence;
-  
-  return Math.max(0, Math.min(1, (distributionScore + confidenceScore) / 2));
-};
+    // Score based on content and filenames
+    const patterns = {
+      work: ['meeting', 'report', 'presentation', 'budget', 'project', 'proposal', 'work', 'business', 'company'],
+      personal: ['photo', 'vacation', 'family', 'personal', 'diary', 'journal', 'home', 'life'],
+      media: ['image', 'video', 'audio', 'photo', '.jpg', '.png', '.mp4', 'media', 'picture'],
+      documents: ['document', 'pdf', 'doc', 'text', 'notes', 'manual', 'paper', 'report'],
+      archive: ['old', 'backup', 'archive', '2020', '2021', '2022', 'previous']
+    };
 
-const generateTagsFromContent = (content: string, maxTags: number = 5): string[] => {
-  // Simple keyword extraction
-  const words = content.toLowerCase()
-    .replace(/[^\w\s]/g, ' ')
-    .split(/\s+/)
-    .filter(word => word.length > 4 && word.length < 15);
+    for (const [category, keywords] of Object.entries(patterns)) {
+      keywords.forEach(keyword => {
+        // Check content
+        if (allText.includes(keyword)) {
+          categoryScores[category as keyof typeof categoryScores] += 1;
+        }
+        // Check filenames (weighted more heavily)
+        if (fileNames.some(name => name.includes(keyword))) {
+          categoryScores[category as keyof typeof categoryScores] += 2;
+        }
+      });
+    }
 
-  const stopWords = new Set(['that', 'this', 'with', 'from', 'they', 'been', 'have', 'were', 'said', 'each', 'which', 'their', 'time', 'will', 'about', 'would', 'there', 'could', 'other']);
-  
-  const wordFreq = words
-    .filter(word => !stopWords.has(word))
-    .reduce((acc, word) => {
-      acc[word] = (acc[word] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+    // Find the best category
+    let bestCategory: FileCluster['category'] = 'mixed';
+    let maxScore = 0;
 
-  return Object.entries(wordFreq)
-    .sort(([,a], [,b]) => b - a)
-    .slice(0, maxTags)
-    .map(([word]) => word);
-};
+    for (const [category, score] of Object.entries(categoryScores)) {
+      if (score > maxScore) {
+        maxScore = score;
+        bestCategory = category as FileCluster['category'];
+      }
+    }
+
+    // Extract meaningful words for naming
+    const commonWords = this.extractCommonWords(fileNames);
+    const meaningfulWords = commonWords.filter(word => 
+      word.length > 3 && !['file', 'doc', 'pdf', 'txt'].includes(word)
+    );
+
+    // Generate theme name and folder name
+    let themeName: string;
+    let folderName: string;
+
+    if (meaningfulWords.length > 0) {
+      const primaryWord = meaningfulWords[0];
+      themeName = `${this.capitalizeWords(primaryWord)} Collection`;
+      folderName = this.capitalizeWords(primaryWord);
+    } else {
+      // Use category-based naming only if no meaningful words found
+      themeName = `${this.capitalizeWords(bestCategory)} Files`;
+      folderName = this.capitalizeWords(bestCategory);
+    }
+
+    return {
+      name: themeName,
+      description: `Collection of ${bestCategory} files`,
+      folderName,
+      category: bestCategory,
+      keywords: meaningfulWords
+    };
+  }
+
+  static extractCommonWords(fileNames: string[]): string[] {
+    const wordCount = new Map<string, number>();
+    
+    fileNames.forEach(name => {
+      const words = name.toLowerCase()
+        .replace(/[^\w\s]/g, ' ')
+        .split(/\s+/)
+        .filter(word => word.length > 3 && !['file', 'document', 'untitled'].includes(word));
+      
+      words.forEach(word => {
+        wordCount.set(word, (wordCount.get(word) || 0) + 1);
+      });
+    });
+
+    return Array.from(wordCount.entries())
+      .filter(([word, count]) => count >= Math.max(2, fileNames.length * 0.3))
+      .sort(([, a], [, b]) => b - a)
+      .map(([word]) => word)
+      .slice(0, 3);
+  }
+
+  static capitalizeWords(str: string): string {
+    return str.split(' ').map(word => 
+      word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+    ).join(' ');
+  }
+
+  static getClusterColor(index: number): string {
+    const colors = [
+      '#3B82F6', '#EF4444', '#10B981', '#F59E0B',
+      '#8B5CF6', '#06B6D4', '#F97316', '#84CC16'
+    ];
+    return colors[index % colors.length];
+  }
+}
+
+interface FileWithEmbedding {
+  fileId: string;
+  fileName: string;
+  embedding: number[];
+  content?: string;
+  metadata?: any;
+  folderPath?: string;
+}
 
 interface OrganizerContextType {
   isAnalyzing: boolean;
@@ -130,6 +243,7 @@ export function OrganizerProvider({ children }: { children: React.ReactNode }) {
     try {
       console.log('🎯 Starting organization analysis...');
       
+      // Call the API directly - it will handle session-based auth internally
       const response = await fetch('/api/organize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -137,13 +251,14 @@ export function OrganizerProvider({ children }: { children: React.ReactNode }) {
           method: selectedMethod,
           maxClusters,
           minClusterSize,
-          createFolders: false,
+          createFolders: false, // Always dry run for analysis
           dryRun: true
         }),
       });
       
       if (!response.ok) {
-        throw new Error('Organization analysis failed');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Organization analysis failed');
       }
       
       const result = await response.json();
@@ -152,7 +267,7 @@ export function OrganizerProvider({ children }: { children: React.ReactNode }) {
       
     } catch (error) {
       console.error('Analysis failed:', error);
-      alert('Failed to analyze files for organization');
+      alert('Failed to analyze files for organization: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setIsAnalyzing(false);
     }
@@ -179,6 +294,13 @@ export function OrganizerProvider({ children }: { children: React.ReactNode }) {
 
     setIsOrganizing(true);
     try {
+      console.log('🚀 Executing organization with clusters:', selectedClusterData.map(c => ({ 
+        id: c.id, 
+        name: c.name, 
+        fileCount: c.files.length,
+        files: c.files.slice(0, 3).map(f => f.fileName)
+      })));
+
       const response = await fetch('/api/organize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -297,4 +419,4 @@ export function useOrganizer() {
     throw new Error('useOrganizer must be used within an OrganizerProvider');
   }
   return context;
-} 
+}

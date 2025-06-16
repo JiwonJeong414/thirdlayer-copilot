@@ -1,24 +1,17 @@
 import React from 'react';
 import { 
   FolderPlus, 
-  Brain, 
-  Zap, 
+  Brain,
   FileText, 
   Folder, 
   Users, 
   Calendar, 
   Image, 
   Archive,
-  BarChart3,
   Settings,
-  Play,
-  Pause,
   CheckCircle,
-  AlertTriangle,
   Clock,
   Sparkles,
-  ArrowRight,
-  TrendingUp,
   Target
 } from 'lucide-react';
 import { useOrganizer } from '../../contexts/OrganizerContext';
