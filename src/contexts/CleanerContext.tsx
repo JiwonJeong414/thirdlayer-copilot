@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import { ScanResponse, CleanerContextType } from '@/types/cleaner';
+import { ScanResponse, CleanerContextType } from '@/types';
 
 const CleanerContext = createContext<CleanerContextType | undefined>(undefined);
 
@@ -15,22 +15,9 @@ export function CleanerProvider({ children }: { children: React.ReactNode }) {
       setIsScanning(true);
       setScanError(null);
       
-      console.log('🚀 Starting integrated scan (sync + cleanup)...');
+      console.log('🚀 Starting database-only cleanup scan...');
       
-      // Step 1: Sync new files first
-      const syncResponse = await fetch('/api/drive/sync?limit=10', {
-        method: 'POST',
-      });
-      
-      if (syncResponse.ok) {
-        const syncData = await syncResponse.json();
-        console.log('✅ Sync completed:', {
-          newFiles: syncData.embeddingCount,
-          totalIndexed: syncData.totalIndexedFiles
-        });
-      }
-      
-      // Step 2: Scan for cleanable files
+      // REMOVED: No more sync call - go directly to cleanup scan
       const cleanupResponse = await fetch('/api/cleaner/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -54,23 +41,41 @@ export function CleanerProvider({ children }: { children: React.ReactNode }) {
       }
       
       const cleanupData = await cleanupResponse.json();
+      console.log('🔍 Scan response:', cleanupData);
       
-      if (cleanupData.files && cleanupData.files.length > 0) {
+      // Handle the response structure from your working API
+      if (cleanupData.success && cleanupData.files && cleanupData.files.length > 0) {
         const limitedFiles = cleanupData.files.slice(0, maxFiles);
         console.log(`📱 Loaded ${limitedFiles.length} files for swiping`);
-        setScanResults({ files: limitedFiles });
+        
+        // Set the full response data including batch suggestions and summary
+        setScanResults({
+          files: limitedFiles,
+          batchSuggestion: cleanupData.batchSuggestion,
+          summary: cleanupData.summary
+        });
       } else {
+        // Handle the case where no files are found
+        const message = cleanupData.files?.length === 0 
+          ? 'No cleanable files found in this batch. Your Drive looks clean! 🎉 Try again to scan more files.'
+          : 'Failed to scan files';
+          
         setScanResults({ 
           files: [],
-          error: 'No cleanable files found in this batch. Your Drive looks clean! 🎉 Try again to scan more files.'
+          error: message
         });
+        
+        if (cleanupData.files?.length === 0) {
+          console.log('✨ No cleanable files found - drive is clean!');
+        }
       }
     } catch (error) {
-      console.error('❌ Integrated scan failed:', error);
-      setScanError(error instanceof Error ? error.message : 'Failed to scan files');
+      console.error('❌ Database scan failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to scan files';
+      setScanError(errorMessage);
       setScanResults({ 
         files: [],
-        error: error instanceof Error ? error.message : 'Failed to scan files'
+        error: errorMessage
       });
     } finally {
       setIsScanning(false);
@@ -89,8 +94,12 @@ export function CleanerProvider({ children }: { children: React.ReactNode }) {
       });
       
       if (!response.ok) {
-        throw new Error('Delete failed');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Delete failed');
       }
+      
+      const result = await response.json();
+      console.log('🗑️ Delete result:', result);
       
       // Update scan results to remove the deleted file
       if (scanResults?.files) {
@@ -128,4 +137,4 @@ export function useCleaner() {
     throw new Error('useCleaner must be used within a CleanerProvider');
   }
   return context;
-} 
+}

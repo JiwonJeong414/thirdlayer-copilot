@@ -2,7 +2,7 @@
 // Uses vector similarity search to find relevant document chunks
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@/generated/prisma';
-import { VectorService } from '@/lib/vectorService';
+import { VectorService } from '@/lib/VectorService';
 
 const prisma = new PrismaClient();
 

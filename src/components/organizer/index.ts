@@ -1,2 +1,2 @@
-export { default as DriveOrganizerCard } from './OrganizerCard';
-export { default as DriveOrganizerDashboard } from './OrganizerDashboard'; 
+export { default as OrganizerCard } from './OrganizerCard';
+export { default as OrganizerDashboard } from './OrganizerDashboard'; 

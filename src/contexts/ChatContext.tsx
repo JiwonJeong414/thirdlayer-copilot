@@ -4,7 +4,7 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import { useDrive } from './DriveContext';
-import { Chat, Message, ChatContextType } from '@/types/chat';
+import { Chat, Message, ChatContextType } from '@/types';
 
 // Create context with undefined default value
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -247,6 +247,7 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
         driveContext: driveContext.length > 0 ? driveContext.map(ctx => ({
           fileId: ctx.fileId,
           fileName: ctx.fileName,
+          content: ctx.content,
           similarity: ctx.similarity,
         })) : undefined,
       };

@@ -12,7 +12,7 @@ import {
   HardDrive,
   XCircle
 } from 'lucide-react';
-import { CleanerFileCardProps } from '@/types/cleaner';
+import { CleanerFileCardProps } from '@/types';
 
 // Helper functions
 const formatFileSize = (bytes: number): string => {

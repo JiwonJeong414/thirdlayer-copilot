@@ -1,23 +1,217 @@
-// src/app/api/drive/organize/route.ts - FINAL FIXED VERSION
+// src/app/api/organize/route.ts - FINAL FIXED VERSION
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@/generated/prisma';
-import { GoogleDriveService } from '@/lib/googleDrive';
-import { DriveOrganizerService } from '@/lib/driveOrganizer';
+import { DriveService } from '@/lib/DriveService';
+import { FileInfo, Cluster, SelectedClusterInfo } from '@/types';
 
 const prisma = new PrismaClient();
+const driveService = DriveService.getInstance();
 
-interface FileInfo {
+interface FileWithEmbedding {
   fileId: string;
   fileName: string;
-  name?: string;
-  confidence: number;
-  keywords: string[];
+  embedding: number[];
+  content?: string;
+  metadata?: any;
+  folderPath?: string;
 }
 
-interface SelectedClusterInfo {
+interface FileCluster {
+  id: string;
   name: string;
-  fileCount: number;
-  files?: FileInfo[];
+  description: string;
+  color: string;
+  files: Array<{
+    fileId: string;
+    fileName: string;
+    confidence: number;
+    keywords: string[];
+  }>;
+  suggestedFolderName: string;
+  category: 'work' | 'personal' | 'media' | 'documents' | 'archive' | 'mixed';
+}
+
+// K-means clustering implementation
+class ClusteringService {
+  static kMeansClustering(embeddings: number[][], k: number): number[] {
+    const numPoints = embeddings.length;
+    const dimensions = embeddings[0].length;
+    
+    // Initialize centroids randomly
+    let centroids: number[][] = [];
+    for (let i = 0; i < k; i++) {
+      const centroid = new Array(dimensions);
+      for (let j = 0; j < dimensions; j++) {
+        centroid[j] = Math.random() * 2 - 1; // Random between -1 and 1
+      }
+      centroids.push(centroid);
+    }
+
+    let assignments = new Array(numPoints).fill(0);
+    let hasChanged = true;
+    let iterations = 0;
+    const maxIterations = 100;
+
+    while (hasChanged && iterations < maxIterations) {
+      hasChanged = false;
+      iterations++;
+
+      // Assign each point to nearest centroid
+      for (let i = 0; i < numPoints; i++) {
+        let minDistance = Infinity;
+        let bestCluster = 0;
+
+        for (let j = 0; j < k; j++) {
+          const distance = this.euclideanDistance(embeddings[i], centroids[j]);
+          if (distance < minDistance) {
+            minDistance = distance;
+            bestCluster = j;
+          }
+        }
+
+        if (assignments[i] !== bestCluster) {
+          assignments[i] = bestCluster;
+          hasChanged = true;
+        }
+      }
+
+      // Update centroids
+      for (let j = 0; j < k; j++) {
+        const clusterPoints = embeddings.filter((_, idx) => assignments[idx] === j);
+        
+        if (clusterPoints.length > 0) {
+          for (let dim = 0; dim < dimensions; dim++) {
+            centroids[j][dim] = clusterPoints.reduce((sum, point) => sum + point[dim], 0) / clusterPoints.length;
+          }
+        }
+      }
+    }
+
+    console.log(`🔄 K-means converged after ${iterations} iterations`);
+    return assignments;
+  }
+
+  static euclideanDistance(a: number[], b: number[]): number {
+    return Math.sqrt(a.reduce((sum, val, i) => sum + Math.pow(val - b[i], 2), 0));
+  }
+
+  static analyzeClusterTheme(files: FileWithEmbedding[]): {
+    name: string;
+    description: string;
+    folderName: string;
+    category: FileCluster['category'];
+    keywords: string[];
+  } {
+    // Get file metadata for better analysis
+    const fileNames = files.map(f => f.fileName.toLowerCase());
+    const allText = files.map(f => f.content?.substring(0, 200) || '').join(' ').toLowerCase();
+
+    // Enhanced category detection
+    const categoryScores = {
+      work: 0,
+      personal: 0,
+      media: 0,
+      documents: 0,
+      archive: 0,
+      mixed: 0
+    };
+
+    // Score based on content and filenames
+    const patterns = {
+      work: ['meeting', 'report', 'presentation', 'budget', 'project', 'proposal', 'work', 'business', 'company'],
+      personal: ['photo', 'vacation', 'family', 'personal', 'diary', 'journal', 'home', 'life'],
+      media: ['image', 'video', 'audio', 'photo', '.jpg', '.png', '.mp4', 'media', 'picture'],
+      documents: ['document', 'pdf', 'doc', 'text', 'notes', 'manual', 'paper', 'report'],
+      archive: ['old', 'backup', 'archive', '2020', '2021', '2022', 'previous']
+    };
+
+    for (const [category, keywords] of Object.entries(patterns)) {
+      keywords.forEach(keyword => {
+        // Check content
+        if (allText.includes(keyword)) {
+          categoryScores[category as keyof typeof categoryScores] += 1;
+        }
+        // Check filenames (weighted more heavily)
+        if (fileNames.some(name => name.includes(keyword))) {
+          categoryScores[category as keyof typeof categoryScores] += 2;
+        }
+      });
+    }
+
+    // Find the best category
+    let bestCategory: FileCluster['category'] = 'mixed';
+    let maxScore = 0;
+
+    for (const [category, score] of Object.entries(categoryScores)) {
+      if (score > maxScore) {
+        maxScore = score;
+        bestCategory = category as FileCluster['category'];
+      }
+    }
+
+    // Extract meaningful words for naming
+    const commonWords = this.extractCommonWords(fileNames);
+    const meaningfulWords = commonWords.filter(word => 
+      word.length > 3 && !['file', 'doc', 'pdf', 'txt'].includes(word)
+    );
+
+    // Generate theme name and folder name
+    let themeName: string;
+    let folderName: string;
+
+    if (meaningfulWords.length > 0) {
+      const primaryWord = meaningfulWords[0];
+      themeName = `${this.capitalizeWords(primaryWord)} Collection`;
+      folderName = this.capitalizeWords(primaryWord);
+    } else {
+      // Use category-based naming only if no meaningful words found
+      themeName = `${this.capitalizeWords(bestCategory)} Files`;
+      folderName = this.capitalizeWords(bestCategory);
+    }
+
+    return {
+      name: themeName,
+      description: `Collection of ${bestCategory} files`,
+      folderName,
+      category: bestCategory,
+      keywords: meaningfulWords
+    };
+  }
+
+  static extractCommonWords(fileNames: string[]): string[] {
+    const wordCount = new Map<string, number>();
+    
+    fileNames.forEach(name => {
+      const words = name.toLowerCase()
+        .replace(/[^\w\s]/g, ' ')
+        .split(/\s+/)
+        .filter(word => word.length > 3 && !['file', 'document', 'untitled'].includes(word));
+      
+      words.forEach(word => {
+        wordCount.set(word, (wordCount.get(word) || 0) + 1);
+      });
+    });
+
+    return Array.from(wordCount.entries())
+      .filter(([word, count]) => count >= Math.max(2, fileNames.length * 0.3))
+      .sort(([, a], [, b]) => b - a)
+      .map(([word]) => word)
+      .slice(0, 3);
+  }
+
+  static capitalizeWords(str: string): string {
+    return str.split(' ').map(word => 
+      word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+    ).join(' ');
+  }
+
+  static getClusterColor(index: number): string {
+    const colors = [
+      '#3B82F6', '#EF4444', '#10B981', '#F59E0B',
+      '#8B5CF6', '#06B6D4', '#F97316', '#84CC16'
+    ];
+    return colors[index % colors.length];
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -79,277 +273,345 @@ export async function POST(request: NextRequest) {
 
     console.log(`📊 Found ${indexedFilesCount.length} indexed files to organize`);
 
-    // Create Drive service
-    const driveService = new GoogleDriveService({
-      access_token: user.driveConnection.accessToken,
-      refresh_token: user.driveConnection.refreshToken || undefined,
-    });
-
-    // Create organizer service
-    const organizerService = new DriveOrganizerService(driveService);
+    // Authenticate user with DriveService
+    await driveService.authenticateUser(userId);
 
     // EXECUTION MODE: If this is execution mode (not dry run) and we have selected clusters
     if (!dryRun && selectedClusters.length > 0) {
       console.log(`🚀 Executing organization for ${selectedClusters.length} selected clusters`);
       
-      // Get the original cluster data by running analysis again
-      const fullAnalysis = await organizerService.analyzeAndOrganize(userId, {
-        method,
-        maxClusters,
-        minClusterSize,
-        createFolders: false,
-        dryRun: true 
-      });
-
-      console.log('🔍 EXECUTION MODE DEBUG:');
-      console.log('📋 Available Clusters:');
-      fullAnalysis.clusters.forEach((cluster, idx) => {
-        console.log(`  ${idx}: { id: "${cluster.id}", name: "${cluster.name}", files: ${cluster.files.length} }`);
-      });
-      
+      // Instead of re-running analysis, use the selectedClusterInfo directly from the UI
+      // This avoids the non-deterministic clustering issue
       console.log('📋 Selected Cluster Info from UI:');
       selectedClusterInfo.forEach((info: SelectedClusterInfo, idx: number) => {
-        console.log(`  ${idx}: { name: "${info.name}", fileCount: ${info.fileCount}, files: [${info.files?.slice(0, 3).map(f => f.name || f.fileName).join(', ')}${info.files && info.files.length > 3 ? '...' : ''}] }`);
+        console.log(`  ${idx}: { name: "${info.name}", fileCount: ${info.fileCount}, files: [${info.files?.slice(0, 3).map(f => f.fileName).join(', ')}${info.files && info.files.length > 3 ? '...' : ''}] }`);
       });
 
-      // FIXED: Exact matching using the file lists from selectedClusterInfo
-      const selectedClusterData = [];
-      
-      for (const selectedInfo of selectedClusterInfo) {
-        console.log(`🎯 Looking for cluster: ${selectedInfo.name} with ${selectedInfo.fileCount} files`);
-        
-        // Try to find exact match by comparing file IDs
-        let matchingCluster = null;
-        
-        if (selectedInfo.files && selectedInfo.files.length > 0) {
-          // Get file IDs from selected cluster
-          const selectedFileIds = new Set(selectedInfo.files.map((f: FileInfo) => f.fileId));
-          
-          // Find cluster with matching files
-          matchingCluster = fullAnalysis.clusters.find(cluster => {
-            const clusterFileIds = new Set(cluster.files.map(f => f.fileId));
-            
-            // Check if at least 80% of selected files are in this cluster
-            const intersection = new Set([...selectedFileIds].filter(id => clusterFileIds.has(id as string)));
-            const overlapPercentage = intersection.size / selectedFileIds.size;
-            
-            console.log(`  Checking cluster "${cluster.name}": ${intersection.size}/${selectedFileIds.size} files match (${Math.round(overlapPercentage * 100)}%)`);
-            
-            return overlapPercentage >= 0.8; // 80% overlap required
-          });
-          
-          if (matchingCluster) {
-            // IMPORTANT: Filter the cluster to only include the originally selected files
-            const filteredFiles = matchingCluster.files.filter(file => 
-              selectedFileIds.has(file.fileId)
-            );
-            
-            // Create a new cluster object with only the selected files
-            const exactCluster = {
-              ...matchingCluster,
-              files: filteredFiles,
-              name: selectedInfo.name, 
-              suggestedFolderName: selectedInfo.name.replace(/[^a-zA-Z0-9\s\-_]/g, '').trim()
-            };
-            
-            selectedClusterData.push(exactCluster);
-            console.log(`✅ Exact match found: "${exactCluster.name}" with ${exactCluster.files.length} files (filtered from ${matchingCluster.files.length})`);
-          }
-        }
-        
-        // Fallback: try name matching if file matching failed
-        if (!matchingCluster) {
-          matchingCluster = fullAnalysis.clusters.find(cluster =>
-            cluster.name === selectedInfo.name ||
-            cluster.name.toLowerCase().includes(selectedInfo.name.toLowerCase()) ||
-            selectedInfo.name.toLowerCase().includes(cluster.name.toLowerCase())
-          );
-          
-          if (matchingCluster) {
-            // Use the original selected name
-            matchingCluster.name = selectedInfo.name;
-            matchingCluster.suggestedFolderName = selectedInfo.name.replace(/[^a-zA-Z0-9\s\-_]/g, '').trim();
-            selectedClusterData.push(matchingCluster);
-            console.log(`✅ Name-based match: "${matchingCluster.name}" with ${matchingCluster.files.length} files`);
-          }
-        }
-        
-        if (!matchingCluster) {
-          console.log(`❌ Could not match cluster: ${selectedInfo.name}`);
-        }
-      }
-
-      if (selectedClusterData.length === 0) {
+      if (selectedClusterInfo.length === 0) {
         return NextResponse.json({ 
-          error: 'No matching clusters found for execution',
-          details: {
-            selectedClusters: selectedClusterInfo,
-            availableClusters: fullAnalysis.clusters.map(c => ({ id: c.id, name: c.name, fileCount: c.files.length }))
-          }
+          error: 'No cluster information provided for execution',
+          details: 'The UI must send selectedClusterInfo with file details for execution'
         }, { status: 400 });
       }
 
-      console.log(`📋 Executing with ${selectedClusterData.length} filtered clusters:`, 
+      // Convert selectedClusterInfo directly to FileCluster format for execution
+      const selectedClusterData: FileCluster[] = selectedClusterInfo.map((info: SelectedClusterInfo) => ({
+        id: info.id,
+        name: info.name,
+        description: `Selected cluster: ${info.name}`,
+        color: '#3B82F6', // Default color
+        suggestedFolderName: info.name.replace(/[^a-zA-Z0-9\s\-_]/g, '').trim(),
+        category: (info.category as FileCluster['category']) || 'mixed',
+        files: info.files.map(f => ({
+          fileId: f.fileId,
+          fileName: f.fileName,
+          confidence: f.confidence || 0.8,
+          keywords: f.keywords || []
+        }))
+      }));
+
+      console.log(`📋 Executing with ${selectedClusterData.length} clusters directly from UI:`, 
         selectedClusterData.map(c => `${c.name} (${c.files.length} files)`)
       );
 
-      // EXECUTE: Use the existing Google Drive API directly instead of non-existent method
+      // EXECUTE: Create folders and move files
       const executionResults = [];
       for (const cluster of selectedClusterData) {
         try {
-          console.log(`📁 Processing cluster: ${cluster.name} (${cluster.files.length} files)`);
-          
-          // Create folder directly at root level (no category subfolder)
-          const folderName = cluster.suggestedFolderName || cluster.name.replace(/[^a-zA-Z0-9\s\-_]/g, '').trim();
-          
-          console.log(`📁 Creating root-level folder: ${folderName}`);
-          
-          // Use the existing GoogleDriveService to create folder
-          const drive = driveService.getDriveClient();
-          if (!drive) {
-            throw new Error('Drive client not available');
-          }
+          // Create folder
+          const folderName = cluster.suggestedFolderName || cluster.name;
+          console.log(`📁 Creating folder: ${folderName}`);
+          const folderId = await driveService.createFolder(folderName);
 
-          // Create the folder at root level
-          const folderResponse = await drive.files.create({
-            requestBody: {
-              name: folderName,
-              mimeType: 'application/vnd.google-apps.folder'
-            },
-            fields: 'id,name'
-          });
-
-          if (!folderResponse.data.id) {
-            throw new Error('Failed to create folder - no ID returned');
-          }
-
-          const folderId = folderResponse.data.id;
-          console.log(`✅ Created folder: ${folderName} (${folderId})`);
-          
-          // Move/create shortcuts for all files in this cluster
-          let filesOrganized = 0;
+          // Move files to folder
+          console.log(`📦 Moving ${cluster.files.length} files to ${folderName}`);
           for (const file of cluster.files) {
             try {
-              // FIXED: Handle both fileName and name properties
-              const fileName = (file as FileInfo).fileName || (file as FileInfo).name;
-              console.log(`📄 Creating shortcut for ${fileName} in ${folderName}`);
-              
-              // First get the target file's metadata to determine its MIME type
-              const targetFile = await drive.files.get({
-                fileId: file.fileId,
-                fields: 'mimeType,name'
-              });
-
-              // Create shortcut
-              const shortcutResponse = await drive.files.create({
-                requestBody: {
-                  name: fileName,
-                  mimeType: 'application/vnd.google-apps.shortcut',
-                  parents: [folderId],
-                  shortcutDetails: {
-                    targetId: file.fileId,
-                    targetMimeType: targetFile.data.mimeType || 'application/octet-stream'
-                  }
-                },
-                fields: 'id'
-              });
-
-              if (!shortcutResponse.data.id) {
-                throw new Error('Failed to create shortcut - no ID returned');
-              }
-              
-              console.log(`✅ Created shortcut for ${fileName} in ${folderName}`);
-              filesOrganized++;
-              
-            } catch (fileError) {
-              const fileName = (file as FileInfo).fileName || (file as FileInfo).name;
-              console.error(`❌ Failed to create shortcut for ${fileName}:`, fileError);
+              await driveService.createShortcut(file.fileId, folderId, file.fileName);
+              console.log(`   ✅ Moved ${file.fileName}`);
+            } catch (error) {
+              console.error(`   ❌ Failed to move ${file.fileName}:`, error);
             }
           }
-          
-          executionResults.push({
-            clusterName: cluster.name,
-            folderName: folderName,
-            folderId: folderId,
-            filesOrganized: filesOrganized,
-            totalFiles: cluster.files.length
-          });
-          
-        } catch (folderError) {
-          console.error(`❌ Failed to create folder for cluster ${cluster.name}:`, folderError);
-        }
-      }
 
-      // Log the organization activity
-      try {
-        for (const result of executionResults) {
+          // Log organization activity
           await prisma.organizationActivity.create({
             data: {
-              userId: user.id,
-              clusterName: result.clusterName,
-              folderName: result.folderName,
-              filesMoved: result.filesOrganized,
-              method,
-              confidence: 0.8, // Default confidence
+              userId,
+              clusterName: cluster.name,
+              folderName,
+              filesMoved: cluster.files.length,
+              method: method,
+              confidence: cluster.files.reduce((sum, f) => sum + f.confidence, 0) / cluster.files.length,
               metadata: {
-                clusterId: `executed_${Date.now()}`,
-                category: 'general',
-                fileIds: [],
-                keywords: []
-              },
-              timestamp: new Date(),
-            },
+                category: cluster.category,
+                keywords: cluster.files.flatMap(f => f.keywords),
+                folderId
+              }
+            }
+          });
+
+          executionResults.push({
+            clusterName: cluster.name,
+            folderName,
+            folderId,
+            fileCount: cluster.files.length,
+            success: true
+          });
+        } catch (error) {
+          console.error(`❌ Failed to process cluster ${cluster.name}:`, error);
+          executionResults.push({
+            clusterName: cluster.name,
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error'
           });
         }
-      } catch (dbError) {
-        console.error('Failed to log organization activity:', dbError);
       }
-
-      const totalFilesOrganized = executionResults.reduce((sum, r) => sum + r.filesOrganized, 0);
-      const totalFoldersCreated = executionResults.length;
 
       return NextResponse.json({
         success: true,
-        clusters: selectedClusterData,
         summary: {
-          totalFiles: totalFilesOrganized,
-          clustersCreated: totalFoldersCreated,
-          estimatedSavings: totalFoldersCreated * 0.5,
-          confidence: 0.8
-        },
-        actions: {
-          createFolders: true,
-          moveFiles: true,
-          addLabels: false
-        },
-        executionResults
+          totalClusters: selectedClusterData.length,
+          totalFiles: selectedClusterData.reduce((sum, c) => sum + c.files.length, 0),
+          results: executionResults
+        }
       });
     }
 
-    // Regular analysis mode (dry run or initial analysis)
-    const organizationSuggestion = await organizerService.analyzeAndOrganize(userId, {
+    // ANALYSIS MODE: Run analysis and return suggestions
+    const analysis = await analyzeAndOrganize(userId, {
       method,
       maxClusters,
       minClusterSize,
-      createFolders: createFolders && !dryRun,
+      createFolders,
       dryRun
     });
 
-    console.log(`✅ Organization analysis complete:`, {
-      clustersFound: organizationSuggestion.clusters.length,
-      totalFiles: organizationSuggestion.summary.totalFiles,
-      confidence: organizationSuggestion.summary.confidence
-    });
-
-    return NextResponse.json(organizationSuggestion);
+    return NextResponse.json(analysis);
 
   } catch (error) {
-    console.error('💥 Organization error:', error);
+    console.error('Error in organization:', error);
+    
+    // Handle specific error types
+    if (error instanceof Error) {
+      if (error.message.includes('File not found')) {
+        return NextResponse.json({ 
+          error: 'Some files could not be accessed',
+          details: error.message,
+          type: 'FILE_ACCESS_ERROR'
+        }, { status: 400 });
+      }
+    }
+
     return NextResponse.json({ 
       error: 'Failed to organize files',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
+      type: 'INTERNAL_ERROR'
     }, { status: 500 });
   }
+}
+
+async function analyzeAndOrganize(userId: string, options: {
+  method: string;
+  maxClusters: number;
+  minClusterSize: number;
+  createFolders: boolean;
+  dryRun: boolean;
+}) {
+  // Get all indexed files with embeddings using the existing API
+  const fileData = await getFileDataWithEmbeddings(userId);
+  
+  if (fileData.length < 10) {
+    throw new Error(`Need at least 10 files for meaningful organization. Currently have ${fileData.length} files with embeddings.`);
+  }
+
+  console.log(`📊 Analyzing ${fileData.length} files for organization`);
+
+  let clusters: FileCluster[] = [];
+
+  switch (options.method) {
+    case 'folders':
+      clusters = await organizeByExistingStructure(fileData);
+      break;
+    case 'clustering':
+      clusters = await organizeByKMeans(fileData, options.maxClusters, options.minClusterSize);
+      break;
+    case 'hybrid':
+      const folderClusters = await organizeByExistingStructure(fileData);
+      const contentClusters = await organizeByKMeans(fileData, options.maxClusters - folderClusters.length, options.minClusterSize);
+      clusters = [...folderClusters, ...contentClusters];
+      break;
+  }
+
+  // Calculate organization metrics
+  const summary = calculateOrganizationMetrics(fileData, clusters);
+
+  return {
+    clusters,
+    summary,
+    actions: {
+      createFolders: options.createFolders,
+      moveFiles: !options.dryRun,
+      addLabels: true
+    }
+  };
+}
+
+async function getFileDataWithEmbeddings(userId: string): Promise<FileWithEmbedding[]> {
+  // Get embeddings directly from database instead of calling API
+  const embeddings = await prisma.documentEmbedding.findMany({
+    where: { userId },
+    select: {
+      fileId: true,
+      fileName: true,
+      embedding: true,
+      content: true,
+      metadata: true,
+    },
+    distinct: ['fileId'], // One per file
+  });
+
+  console.log(`📄 Found ${embeddings.length} embeddings for user ${userId}`);
+
+  const fileEmbeddings = embeddings.map(e => ({
+    fileId: e.fileId,
+    fileName: e.fileName,
+    embedding: Array.isArray(e.embedding) ? e.embedding : JSON.parse(e.embedding || '[]'),
+    content: e.content,
+    metadata: e.metadata as any,
+    folderPath: (e.metadata as any)?.folderPath || 'Root'
+  }));
+
+  // Filter out files with invalid embeddings
+  const validEmbeddings = fileEmbeddings.filter(file => 
+    Array.isArray(file.embedding) && file.embedding.length > 0
+  );
+
+  console.log(`✅ Valid embeddings for clustering: ${validEmbeddings.length}`);
+  return validEmbeddings;
+}
+
+async function organizeByKMeans(
+  fileData: FileWithEmbedding[],
+  k: number,
+  minClusterSize: number
+): Promise<FileCluster[]> {
+  console.log(`🧮 Running K-means clustering with k=${k}`);
+
+  // Extract embeddings for clustering
+  const embeddings = fileData.map(f => f.embedding);
+  const clusters = ClusteringService.kMeansClustering(embeddings, k);
+
+  // Group files by cluster
+  const fileClusters: FileCluster[] = [];
+  
+  for (let i = 0; i < k; i++) {
+    const clusterFiles = fileData
+      .map((file, idx) => ({ file, cluster: clusters[idx] }))
+      .filter(item => item.cluster === i)
+      .map(item => item.file);
+
+    if (clusterFiles.length < minClusterSize) {
+      console.log(`⚠️ Cluster ${i} too small (${clusterFiles.length} files), merging with others`);
+      continue;
+    }
+
+    // Analyze cluster content to determine theme
+    const theme = ClusteringService.analyzeClusterTheme(clusterFiles);
+    
+    fileClusters.push({
+      id: `cluster_${i}`,
+      name: theme.name,
+      description: theme.description,
+      color: ClusteringService.getClusterColor(i),
+      suggestedFolderName: theme.folderName,
+      category: theme.category,
+      files: clusterFiles.map(f => ({
+        fileId: f.fileId,
+        fileName: f.fileName,
+        confidence: 0.8, // K-means confidence
+        keywords: theme.keywords
+      }))
+    });
+  }
+
+  console.log(`✅ Created ${fileClusters.length} content-based clusters`);
+  return fileClusters;
+}
+
+async function organizeByExistingStructure(fileData: FileWithEmbedding[]): Promise<FileCluster[]> {
+  console.log(`📁 Analyzing existing folder structure`);
+
+  // Group files by their current folder structure
+  const folderGroups = new Map<string, FileWithEmbedding[]>();
+  
+  for (const file of fileData) {
+    const folderPath = file.folderPath || 'Root';
+    if (!folderGroups.has(folderPath)) {
+      folderGroups.set(folderPath, []);
+    }
+    folderGroups.get(folderPath)!.push(file);
+  }
+
+  const clusters: FileCluster[] = [];
+  let clusterIndex = 0;
+
+  for (const [folderPath, files] of folderGroups) {
+    if (files.length < 2) continue; // Skip single files
+
+    const theme = ClusteringService.analyzeClusterTheme(files);
+    
+    clusters.push({
+      id: `folder_${clusterIndex++}`,
+      name: `${folderPath} Organization`,
+      description: `Files from ${folderPath} folder`,
+      color: ClusteringService.getClusterColor(clusterIndex),
+      suggestedFolderName: improveFolderName(folderPath, theme),
+      category: theme.category,
+      files: files.map(f => ({
+        fileId: f.fileId,
+        fileName: f.fileName,
+        confidence: 0.9, // High confidence for existing structure
+        keywords: theme.keywords
+      }))
+    });
+  }
+
+  console.log(`✅ Created ${clusters.length} folder-based clusters`);
+  return clusters;
+}
+
+function improveFolderName(currentPath: string, theme: any): string {
+  if (currentPath === 'Root') return theme.folderName;
+  
+  const pathParts = currentPath.split('/').filter(Boolean);
+  const lastPart = pathParts[pathParts.length - 1];
+  
+  return `${lastPart} - Organized`;
+}
+
+function calculateOrganizationMetrics(files: FileWithEmbedding[], clusters: FileCluster[]): {
+  totalFiles: number;
+  clustersCreated: number;
+  estimatedSavings: number;
+  confidence: number;
+} {
+  const totalFiles = files.length;
+  const organizedFiles = clusters.reduce((sum, cluster) => sum + cluster.files.length, 0);
+  const averageConfidence = clusters.reduce((sum, cluster) => {
+    const clusterConfidence = cluster.files.reduce((cSum, file) => cSum + file.confidence, 0) / cluster.files.length;
+    return sum + clusterConfidence;
+  }, 0) / clusters.length;
+
+  // Estimate time savings (rough heuristic)
+  const estimatedSavings = Math.floor((organizedFiles / totalFiles) * 2); // 2 hours max
+
+  return {
+    totalFiles,
+    clustersCreated: clusters.length,
+    estimatedSavings,
+    confidence: averageConfidence || 0.5
+  };
 }
 
 // Analytics endpoint for organization history

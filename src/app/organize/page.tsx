@@ -5,10 +5,11 @@ import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import Protected from '@/components/Protected';
 import Spinner from '@/components/Spinner';
-import { DriveOrganizerDashboard } from '@/components/organizer';
+import { OrganizerDashboard } from '@/components/organizer';
 import { Brain, ArrowLeft, Folder, Sparkles, Target } from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
+import { OrganizerProvider } from '@/contexts/OrganizerContext';
 
 export default function OrganizePage() {
   const { user, loading, driveConnection } = useAuth();
@@ -187,53 +188,55 @@ export default function OrganizePage() {
 
   return (
     <Protected>
-      <div className="min-h-screen bg-gradient-to-br from-emerald-900 via-teal-900 to-gray-900">
-        {/* Enhanced header with back button */}
-        <div className="relative z-10">
-          <div className="max-w-7xl mx-auto p-6">
-            <motion.div 
-              className="flex items-center justify-between mb-8"
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8 }}
-            >
-              <motion.button
-                onClick={() => window.history.back()}
-                className="flex items-center space-x-3 text-emerald-300 hover:text-white transition-colors p-3 rounded-xl hover:bg-emerald-800/30 backdrop-blur-sm"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <ArrowLeft className="w-5 h-5" />
-                <span className="font-medium">Back</span>
-              </motion.button>
-              
+      <OrganizerProvider>
+        <div className="min-h-screen bg-gradient-to-br from-emerald-900 via-teal-900 to-gray-900">
+          {/* Enhanced header with back button */}
+          <div className="relative z-10">
+            <div className="max-w-7xl mx-auto p-6">
               <motion.div 
-                className="flex items-center space-x-4"
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ delay: 0.2, duration: 0.8 }}
+                className="flex items-center justify-between mb-8"
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8 }}
               >
-                <div className="p-4 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-2xl shadow-lg">
-                  <Brain className="w-10 h-10 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-4xl font-bold bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent">
-                    AI Drive Organizer
-                  </h1>
-                  <p className="text-emerald-300 text-lg">
-                    Intelligent file organization using K-means clustering and folder analysis
-                  </p>
-                </div>
+                <motion.button
+                  onClick={() => window.history.back()}
+                  className="flex items-center space-x-3 text-emerald-300 hover:text-white transition-colors p-3 rounded-xl hover:bg-emerald-800/30 backdrop-blur-sm"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                  <span className="font-medium">Back</span>
+                </motion.button>
+                
+                <motion.div 
+                  className="flex items-center space-x-4"
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: 0.2, duration: 0.8 }}
+                >
+                  <div className="p-4 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-2xl shadow-lg">
+                    <Brain className="w-10 h-10 text-white" />
+                  </div>
+                  <div>
+                    <h1 className="text-4xl font-bold bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent">
+                      AI Drive Organizer
+                    </h1>
+                    <p className="text-emerald-300 text-lg">
+                      Intelligent file organization using K-means clustering and folder analysis
+                    </p>
+                  </div>
+                </motion.div>
+                
+                <div className="w-24" /> {/* Spacer for balance */}
               </motion.div>
-              
-              <div className="w-24" /> {/* Spacer for balance */}
-            </motion.div>
+            </div>
           </div>
+          
+          {/* Pass the onBack prop to DriveOrganizerDashboard */}
+          <OrganizerDashboard onBack={() => window.history.back()} />
         </div>
-        
-        {/* Pass the onBack prop to DriveOrganizerDashboard */}
-        <DriveOrganizerDashboard onBack={() => window.history.back()} />
-      </div>
+      </OrganizerProvider>
     </Protected>
   );
 }

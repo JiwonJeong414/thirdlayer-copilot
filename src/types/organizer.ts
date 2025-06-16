@@ -1,16 +1,42 @@
-export interface FileCluster {
+export type OrganizationMethod = 'folders' | 'clustering' | 'hybrid';
+export type ClusterCategory = 'work' | 'personal' | 'media' | 'documents' | 'archive' | 'mixed';
+
+export interface FileInfo {
+  fileId: string;
+  fileName: string;
+  name?: string;
+  confidence: number;
+  keywords: string[];
+}
+
+export interface Cluster {
   id: string;
   name: string;
-  description: string;
-  color: string;
+  suggestedFolderName?: string;
+  files: FileInfo[];
+}
+
+export interface SelectedClusterInfo {
+  id: string;
+  name: string;
+  fileCount: number;
+  category: string;
   files: Array<{
     fileId: string;
     fileName: string;
     confidence: number;
     keywords: string[];
   }>;
+}
+
+export interface FileCluster {
+  id: string;
+  name: string;
+  description: string;
+  color: string;
+  files: FileInfo[];
   suggestedFolderName: string;
-  category: 'work' | 'personal' | 'media' | 'documents' | 'archive' | 'mixed';
+  category: ClusterCategory;
 }
 
 export interface OrganizationSuggestion {
@@ -34,4 +60,23 @@ export interface OrganizationStats {
   organizationCount: number;
 }
 
-export type OrganizationMethod = 'folders' | 'clustering' | 'hybrid'; 
+export interface OrganizerContextType {
+  isAnalyzing: boolean;
+  isOrganizing: boolean;
+  suggestion: OrganizationSuggestion | null;
+  selectedMethod: OrganizationMethod;
+  maxClusters: number;
+  minClusterSize: number;
+  createFolders: boolean;
+  selectedClusters: Set<string>;
+  stats: OrganizationStats;
+  setSelectedMethod: (method: OrganizationMethod) => void;
+  setMaxClusters: (max: number) => void;
+  setMinClusterSize: (min: number) => void;
+  setCreateFolders: (create: boolean) => void;
+  toggleCluster: (clusterId: string) => void;
+  toggleAllClusters: () => void;
+  runAnalysis: () => Promise<void>;
+  executeOrganization: () => Promise<void>;
+  resetSuggestion: () => void;
+} 

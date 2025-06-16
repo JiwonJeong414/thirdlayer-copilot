@@ -1,3 +1,8 @@
+// src/types/cleaner.ts - File cleanup types
+export type FileCategory = 'empty' | 'tiny' | 'small' | 'duplicate' | 'old' | 'low_quality' | 'system';
+export type ConfidenceLevel = 'low' | 'medium' | 'high';
+export type SwipeAction = 'keep' | 'delete';
+
 export interface CleanableFile {
   id: string;
   name: string;
@@ -7,9 +12,9 @@ export interface CleanableFile {
   webViewLink?: string;
   thumbnailLink?: string;
   content?: string;
-  category: 'empty' | 'tiny' | 'small' | 'duplicate' | 'old' | 'low_quality' | 'system';
+  category: FileCategory;
   reason: string;
-  confidence: 'low' | 'medium' | 'high';
+  confidence: ConfidenceLevel;
   aiSummary?: string;
   duplicateOf?: string;
   selected: boolean;
@@ -17,30 +22,27 @@ export interface CleanableFile {
 
 export interface SwipeDecision {
   fileId: string;
-  action: 'keep' | 'delete';
+  action: SwipeAction;
   timestamp: number;
-}
-
-export interface CleanerUIProps {
-  onBack: () => void;
 }
 
 export interface ScanResponse {
   files: CleanableFile[];
+  batchSuggestion?: {
+    autoDelete: CleanableFile[];
+    review: CleanableFile[];
+    keep: CleanableFile[];
+    summary: string;
+  };
+  summary?: {
+    totalFound: number;
+    scanMethod: string;
+    highConfidence: number;
+    mediumConfidence: number;
+    lowConfidence: number;
+    categories: Record<FileCategory, number>;
+  };
   error?: string;
-}
-
-export interface CleanerFileCardProps {
-  file: CleanableFile;
-  dragOffset: { x: number; y: number };
-  isDragging: boolean;
-  onMouseDown: (e: React.MouseEvent) => void;
-  onMouseMove: (e: React.MouseEvent) => void;
-  onMouseUp: () => void;
-  onTouchStart: (e: React.TouchEvent) => void;
-  onTouchMove: (e: React.TouchEvent) => void;
-  onTouchEnd: () => void;
-  swipeHint: string | null;
 }
 
 export interface CleanerContextType {

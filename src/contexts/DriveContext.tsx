@@ -3,19 +3,19 @@
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { useAuth } from './AuthContext';
-import { 
+import type { 
   DriveContextType, 
   IndexedFile, 
-  SearchResult, 
+  DriveContext, 
   SyncProgress 
 } from '@/types/drive';
 
 // Create context with undefined as initial value
-const DriveContext = createContext<DriveContextType | undefined>(undefined);
+const DriveContextProvider = createContext<DriveContextType | undefined>(undefined);
 
 // Custom hook to use Drive context
 export const useDrive = () => {
-  const context = useContext(DriveContext);
+  const context = useContext(DriveContextProvider);
   if (!context) {
     throw new Error('useDrive must be used within a DriveProvider');
   }
@@ -30,7 +30,7 @@ export const DriveProvider = ({ children }: { children: ReactNode }) => {
   const [indexedFiles, setIndexedFiles] = useState<IndexedFile[]>([]);
   const [isSync, setIsSync] = useState(false);
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchResults, setSearchResults] = useState<DriveContext[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
   // Fetch the list of indexed files from the server
@@ -71,7 +71,15 @@ export const DriveProvider = ({ children }: { children: ReactNode }) => {
     if (!user || !driveConnection.isConnected || isSync) return;
 
     setIsSync(true);
-    setSyncProgress({ totalFiles: 0, processedCount: 0, errorCount: 0 });
+    setSyncProgress({
+      totalFiles: 0,
+      processedFiles: 0,
+      currentFile: '',
+      embeddingsCreated: 0,
+      skipped: 0,
+      errors: 0,
+      isComplete: false
+    });
 
     try {
       const response = await fetch('/api/drive/sync', {
@@ -82,8 +90,12 @@ export const DriveProvider = ({ children }: { children: ReactNode }) => {
         const data = await response.json();
         setSyncProgress({
           totalFiles: data.totalFiles,
-          processedCount: data.processedCount,
-          errorCount: data.errorCount,
+          processedFiles: data.processedCount,
+          currentFile: data.currentFile,
+          embeddingsCreated: data.embeddingsCreated,
+          skipped: data.skipped,
+          errors: data.errors,
+          isComplete: false
         });
         
         // Refresh indexed files after successful sync
@@ -100,7 +112,7 @@ export const DriveProvider = ({ children }: { children: ReactNode }) => {
   };
 
   // Search through indexed documents
-  const searchDocuments = async (query: string, limit: number = 5): Promise<SearchResult[]> => {
+  const searchDocuments = async (query: string, limit: number = 5): Promise<DriveContext[]> => {
     if (!user || !driveConnection.isConnected) {
       throw new Error('Drive not connected');
     }
@@ -137,7 +149,7 @@ export const DriveProvider = ({ children }: { children: ReactNode }) => {
 
   // Provide drive functionality to children components
   return (
-    <DriveContext.Provider
+    <DriveContextProvider
       value={{
         indexedFiles,
         isSync,
@@ -152,7 +164,7 @@ export const DriveProvider = ({ children }: { children: ReactNode }) => {
       }}
     >
       {children}
-    </DriveContext.Provider>
+    </DriveContextProvider>
   );
 };
 

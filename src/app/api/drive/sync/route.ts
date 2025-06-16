@@ -1,8 +1,8 @@
-// src/app/api/drive/sync/route.ts - FIXED VERSION
+// src/app/api/drive/sync/route.ts - RESTORED TO WORKING VERSION
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@/generated/prisma';
-import { GoogleDriveService } from '@/lib/googleDrive';
-import { VectorService } from '@/lib/vectorService';
+import { DriveService } from '@/lib/DriveService';
+import { VectorService } from '@/lib/VectorService';
 
 const prisma = new PrismaClient();
 
@@ -40,10 +40,8 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    const driveService = new GoogleDriveService({
-      access_token: user.driveConnection.accessToken,
-      refresh_token: user.driveConnection.refreshToken || undefined,
-    });
+    const driveService = DriveService.getInstance();
+    await driveService.authenticateUser(userId);
 
     // Get existing embeddings (files that have been processed for embeddings)
     const existingEmbeddings = await prisma.documentEmbedding.findMany({
@@ -55,72 +53,85 @@ export async function POST(request: NextRequest) {
     const processedFileIds = new Set(existingEmbeddings.map(doc => doc.fileId));
     console.log(`📊 Currently processed files: ${processedFileIds.size}`);
 
-    // Fetch files from Drive
-    let allFiles: any[] = [];
-    let nextPageToken: string | undefined;
+    // FAST APPROACH: Use targeted queries instead of fetching everything
+    console.log('🎯 Using targeted file search for faster sync...');
+    
+    let filesToProcess: any[] = [];
+    let totalFilesFound = 0;
     let processableFilesFound = 0;
-    const maxPagesToFetch = 20; // Reduced to be more reasonable
-    let pagesFetched = 0;
 
-    console.log('🔍 Fetching files from Google Drive...');
-
-    do {
-      const pageFiles = await driveService.listFiles({
-        userId: user.id,
-        id: user.driveConnection.id,
-        accessToken: user.driveConnection.accessToken,
-        refreshToken: user.driveConnection.refreshToken,
-        isConnected: user.driveConnection.isConnected,
-        connectedAt: user.driveConnection.connectedAt,
-        lastSyncAt: user.driveConnection.lastSyncAt
+    if (forceReindex) {
+      console.log(`🔄 Force reindex mode: fetching first ${targetNewDocs} processable files`);
+      // Get any files, limited count
+      const someFiles = await driveService.listFiles({
+        pageSize: Math.min(targetNewDocs * 3, 100), // Get 3x target to account for non-processable files
+        orderBy: 'modifiedTime desc' // Get most recently modified first
       });
       
-      if (!pageFiles || pageFiles.length === 0) {
-        console.log('No more files found, breaking...');
-        break;
-      }
-      
-      allFiles = allFiles.concat(pageFiles);
-      
-      // Count processable files on this page
-      const pageProcessableFiles = pageFiles.filter((file: any) => shouldProcessFile(file.mimeType));
-      processableFilesFound += pageProcessableFiles.length;
-      
-      console.log(`📄 Page ${pagesFetched + 1}: ${pageFiles.length} total files, ${pageProcessableFiles.length} processable files`);
-      console.log(`   Sample files: ${pageFiles.slice(0, 3).map((f: any) => `${f.name} (${f.mimeType})`).join(', ')}`);
-      
-      pagesFetched++;
-      
-      // Continue until we have enough processable files OR hit the page limit
-    } while (pagesFetched < maxPagesToFetch);
-
-    console.log(`📈 Total files fetched: ${allFiles.length}, processable: ${allFiles.filter(f => shouldProcessFile(f.mimeType)).length}`);
-
-    // Filter to get processable files
-    const processableFiles = allFiles.filter(file => shouldProcessFile(file.mimeType));
-    
-    // Select files to process based on mode
-    let filesToProcess: any[] = [];
-    
-    if (forceReindex) {
-      // Force mode: take first N processable files regardless of processing status
+      const processableFiles = someFiles.filter(file => file.mimeType && shouldProcessFile(file.mimeType));
       filesToProcess = processableFiles.slice(0, targetNewDocs);
-      console.log(`🔄 Force reindex mode: selected ${filesToProcess.length} processable files`);
+      totalFilesFound = someFiles.length;
+      processableFilesFound = processableFiles.length;
+      
+      console.log(`🔄 Found ${filesToProcess.length} files to force reindex`);
     } else {
-      // Normal mode: only files that haven't been processed for embeddings
-      const unprocessedFiles = processableFiles.filter(file => !processedFileIds.has(file.id));
+      console.log(`🆕 Normal mode: searching for new files to process`);
+      
+      // Strategy: Get recently modified files first (most likely to be new)
+      const recentFiles = await driveService.listFiles({
+        pageSize: Math.min(targetNewDocs * 5, 200), // Get more to find unprocessed ones
+        orderBy: 'modifiedTime desc',
+        q: 'trashed=false' // Only non-trashed files
+      });
+      
+      totalFilesFound = recentFiles.length;
+      const processableFiles = recentFiles.filter(file => file.mimeType && shouldProcessFile(file.mimeType));
+      processableFilesFound = processableFiles.length;
+      
+      // Filter out already processed files
+      const unprocessedFiles = processableFiles.filter(file => file.id && !processedFileIds.has(file.id));
       filesToProcess = unprocessedFiles.slice(0, targetNewDocs);
       
-      console.log(`🆕 New files mode: found ${unprocessedFiles.length} unprocessed files, selected ${filesToProcess.length}`);
+      console.log(`📊 Recent files scan: ${totalFilesFound} total, ${processableFiles.length} processable, ${unprocessedFiles.length} unprocessed`);
       
-      if (unprocessedFiles.length === 0) {
+      // If we don't have enough from recent files, try a broader search
+      if (filesToProcess.length < targetNewDocs && filesToProcess.length < unprocessedFiles.length) {
+        console.log(`🔍 Not enough recent files, searching more broadly...`);
+        
+        // Search for specific document types to be more targeted
+        const docTypes = [
+          'application/vnd.google-apps.document',
+          'application/vnd.google-apps.spreadsheet', 
+          'application/vnd.google-apps.presentation'
+        ];
+        
+        for (const mimeType of docTypes) {
+          if (filesToProcess.length >= targetNewDocs) break;
+          
+          const typeFiles = await driveService.listFiles({
+            pageSize: 50,
+            q: `mimeType='${mimeType}' and trashed=false`,
+            orderBy: 'modifiedTime desc'
+          });
+          
+          const newUnprocessed = typeFiles.filter(file => 
+            file.id && !processedFileIds.has(file.id) && 
+            !filesToProcess.some(f => f.id === file.id)
+          );
+          
+          filesToProcess.push(...newUnprocessed.slice(0, targetNewDocs - filesToProcess.length));
+          console.log(`   📄 Found ${newUnprocessed.length} new ${mimeType.split('.').pop()} files`);
+        }
+      }
+      
+      if (filesToProcess.length === 0) {
         return NextResponse.json({
           success: true,
-          message: 'All processable files have already been indexed!',
+          message: 'All recent files have already been indexed! Your Drive is up to date.',
           strategy: 'new_files_only',
           targetDocuments: targetNewDocs,
-          totalFilesInDrive: allFiles.length,
-          processableFilesInDrive: processableFiles.length,
+          totalFilesInDrive: totalFilesFound,
+          processableFilesInDrive: processableFilesFound,
           newFilesAvailable: 0,
           processedCount: 0,
           embeddingCount: 0,
@@ -190,7 +201,8 @@ export async function POST(request: NextRequest) {
           console.log(`   📝 Extracting content from ${file.name}...`);
           const content = await driveService.getFileContent(file.id);
           
-          if (content && content.trim().length > 50) {
+          // More lenient content check - even metadata is useful for search
+          if (content && content.trim().length > 20) {
             console.log(`   🧠 Creating embeddings for ${file.name} (${content.length} chars)...`);
             await VectorService.storeDocumentEmbeddings(
               user.id,
@@ -207,7 +219,8 @@ export async function POST(request: NextRequest) {
           }
         } catch (embeddingError) {
           console.error(`   ❌ Failed to create embeddings for ${file.name}:`, embeddingError);
-          skippedCount++;
+          // Don't count this as total failure - file record was still updated
+          errorCount++;
         }
 
         processedCount++;
@@ -238,9 +251,9 @@ export async function POST(request: NextRequest) {
       message: `Sync completed! Successfully indexed ${embeddingCount} documents.`,
       strategy: forceReindex ? 'force_reindex' : 'new_files_only',
       targetDocuments: targetNewDocs,
-      totalFilesInDrive: allFiles.length,
-      processableFilesInDrive: processableFiles.length,
-      newFilesAvailable: processableFiles.filter(f => !processedFileIds.has(f.id)).length,
+      totalFilesInDrive: totalFilesFound,
+      processableFilesInDrive: processableFilesFound,
+      newFilesAvailable: filesToProcess.length,
       processedCount,
       embeddingCount,
       skippedCount,
@@ -249,7 +262,6 @@ export async function POST(request: NextRequest) {
       totalIndexedFiles: finalIndexedFiles.length,
       embeddingModelAvailable,
       debug: {
-        pagesSearched: pagesFetched,
         selectedFilesCount: filesToProcess.length,
         startingIndexedFiles: processedFileIds.size,
         finalIndexedFiles: finalIndexedFiles.length,
@@ -275,10 +287,10 @@ export async function POST(request: NextRequest) {
 
 function shouldProcessFile(mimeType: string): boolean {
   const supportedTypes = [
-    'application/vnd.google-apps.document',      // Google Docs
-    'application/vnd.google-apps.spreadsheet',  // Google Sheets  
-    'application/vnd.google-apps.presentation', // Google Slides
-    'text/plain',                               // Text files
+    'application/vnd.google-apps.document',      // Google Docs - FULL TEXT
+    'application/vnd.google-apps.spreadsheet',  // Google Sheets - FULL TEXT
+    'application/vnd.google-apps.presentation', // Google Slides - FULL TEXT
+    'text/plain',                               // Text files - FULL TEXT
   ];
   
   return supportedTypes.includes(mimeType);
