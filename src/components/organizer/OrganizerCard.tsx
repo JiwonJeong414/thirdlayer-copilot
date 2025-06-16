@@ -1,6 +1,3 @@
-// src/components/drive/DriveOrganizerCard.tsx
-// Add this to your existing cleaner page as a new mode
-
 'use client';
 
 import React from 'react';
@@ -14,12 +11,9 @@ import {
   Target
 } from 'lucide-react';
 import { useOrganizer } from '../../contexts/OrganizerContext';
+import { OrganizerCardProps } from '../../types/organizer';
 
-interface DriveOrganizerCardProps {
-  onActivate: () => void;
-}
-
-export default function DriveOrganizerCard({ onActivate }: DriveOrganizerCardProps) {
+export default function OrganizerCard({ onActivate }: OrganizerCardProps) {
   return (
     <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-xl p-6">
       {/* Header */}
@@ -65,4 +59,4 @@ export default function DriveOrganizerCard({ onActivate }: DriveOrganizerCardPro
       </button>
     </div>
   );
-}
+} 

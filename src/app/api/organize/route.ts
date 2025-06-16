@@ -1,7 +1,7 @@
 // src/app/api/drive/organize/route.ts - FINAL FIXED VERSION
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@/generated/prisma';
-import { GoogleDriveService } from '@/lib/googleDrive';
+import { DriveClient } from '@/lib/DriveClient';
 import { DriveOrganizerService } from '@/lib/driveOrganizer';
 
 const prisma = new PrismaClient();
@@ -80,13 +80,14 @@ export async function POST(request: NextRequest) {
     console.log(`📊 Found ${indexedFilesCount.length} indexed files to organize`);
 
     // Create Drive service
-    const driveService = new GoogleDriveService({
+    const driveClient = DriveClient.getInstance();
+    await driveClient.authenticate({
       access_token: user.driveConnection.accessToken,
       refresh_token: user.driveConnection.refreshToken || undefined,
     });
 
     // Create organizer service
-    const organizerService = new DriveOrganizerService(driveService);
+    const organizerService = new DriveOrganizerService(driveClient);
 
     // EXECUTION MODE: If this is execution mode (not dry run) and we have selected clusters
     if (!dryRun && selectedClusters.length > 0) {
@@ -205,7 +206,7 @@ export async function POST(request: NextRequest) {
           console.log(`📁 Creating root-level folder: ${folderName}`);
           
           // Use the existing GoogleDriveService to create folder
-          const drive = driveService.getDriveClient();
+          const drive = driveClient.getDriveAPI();
           if (!drive) {
             throw new Error('Drive client not available');
           }

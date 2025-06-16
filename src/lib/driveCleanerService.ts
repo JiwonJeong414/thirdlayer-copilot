@@ -1,5 +1,5 @@
 // src/lib/driveCleanerService.ts
-import { GoogleDriveService } from '@/lib/googleDrive';
+import { DriveClient } from '@/lib/DriveClient';
 import { VectorService } from '@/lib/vectorService';
 import { PrismaClient } from '@/generated/prisma';
 import { google } from 'googleapis';
@@ -39,7 +39,7 @@ export class DriveCleanerService {
   private static OLD_FILE_THRESHOLD = 365 * 24 * 60 * 60 * 1000; // 1 year in ms
   private static MAX_CONTENT_LENGTH = 2000; // chars for LLM analysis
 
-  constructor(private driveService: GoogleDriveService) {}
+  constructor(private driveClient: DriveClient) {}
 
   // ===================================================================
   // CORE SCANNING LOGIC - Separate from indexing
@@ -82,18 +82,7 @@ export class DriveCleanerService {
     }
 
     // Set up Google Drive API
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      process.env.GOOGLE_REDIRECT_URI
-    );
-
-    oauth2Client.setCredentials({
-      access_token: user.driveConnection.accessToken,
-      refresh_token: user.driveConnection.refreshToken,
-    });
-
-    const drive = google.drive({ version: 'v3', auth: oauth2Client });
+    const drive = this.driveClient.getDriveAPI();
 
     // Scan files in batches
     try {
@@ -139,7 +128,7 @@ export class DriveCleanerService {
             // Get content for AI analysis if requested
             if (includeContent && this.shouldAnalyzeContent(file.mimeType, fileSize)) {
               try {
-                content = await this.driveService.getFileContent(file.id);
+                content = await this.driveClient.getFileContent(file.id);
                 if (content && content.length > DriveCleanerService.MAX_CONTENT_LENGTH) {
                   content = content.substring(0, DriveCleanerService.MAX_CONTENT_LENGTH) + '...';
                 }

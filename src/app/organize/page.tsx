@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import Protected from '@/components/Protected';
 import Spinner from '@/components/Spinner';
-import { DriveOrganizerDashboard } from '@/components/organizer';
+import { OrganizerDashboard } from '@/components/organizer';
 import { Brain, ArrowLeft, Folder, Sparkles, Target } from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -232,7 +232,7 @@ export default function OrganizePage() {
         </div>
         
         {/* Pass the onBack prop to DriveOrganizerDashboard */}
-        <DriveOrganizerDashboard onBack={() => window.history.back()} />
+        <OrganizerDashboard onBack={() => window.history.back()} />
       </div>
     </Protected>
   );

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDriveAuthUrl } from '@/lib/driveAuth';
+import { DriveClient } from '@/lib/DriveClient';
 import crypto from 'crypto';
 
 export async function GET(request: NextRequest) {
@@ -14,7 +14,8 @@ export async function GET(request: NextRequest) {
     const state = crypto.randomBytes(32).toString('hex');
     
     // Get Drive-specific OAuth URL
-    const authUrl = getDriveAuthUrl(state);
+    const driveClient = DriveClient.getInstance();
+    const authUrl = driveClient.getAuthUrl(state);
     
     console.log('Generated Drive OAuth URL:', {
       url: authUrl.substring(0, 100) + '...',

@@ -34,4 +34,8 @@ export interface OrganizationStats {
   organizationCount: number;
 }
 
-export type OrganizationMethod = 'folders' | 'clustering' | 'hybrid'; 
+export type OrganizationMethod = 'folders' | 'clustering' | 'hybrid';
+
+export interface OrganizerCardProps {
+  onActivate: () => void;
+} 

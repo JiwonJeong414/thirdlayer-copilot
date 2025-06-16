@@ -1,5 +1,5 @@
 // src/lib/driveOrganizer.ts - AI-powered folder organization - UPDATED
-import { GoogleDriveService } from '@/lib/googleDrive';
+import { DriveClient } from '@/lib/DriveClient';
 import { VectorService } from '@/lib/vectorService';
 import { PrismaClient } from '@/generated/prisma';
 import { google } from 'googleapis';
@@ -47,10 +47,10 @@ interface OrganizationOptions {
 }
 
 export class DriveOrganizerService {
-  private driveService: GoogleDriveService;
+  private driveClient: DriveClient;
 
-  constructor(driveService: GoogleDriveService) {
-    this.driveService = driveService;
+  constructor(driveClient: DriveClient) {
+    this.driveClient = driveClient;
   }
 
   // ===================================================================
@@ -145,7 +145,7 @@ export class DriveOrganizerService {
     console.log(`🚀 Executing organization for ${selectedClusters.length} selected clusters`);
     
     // Get the drive client from the service
-    const drive = this.driveService.getDriveClient();
+    const drive = this.driveClient.getDriveAPI();
     if (!drive) {
       throw new Error('Failed to access Google Drive client');
     }

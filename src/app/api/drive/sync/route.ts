@@ -1,7 +1,7 @@
 // src/app/api/drive/sync/route.ts - FIXED VERSION
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@/generated/prisma';
-import { GoogleDriveService } from '@/lib/googleDrive';
+import { DriveClient } from '@/lib/DriveClient';
 import { VectorService } from '@/lib/vectorService';
 
 const prisma = new PrismaClient();
@@ -40,7 +40,8 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    const driveService = new GoogleDriveService({
+    const driveClient = DriveClient.getInstance();
+    await driveClient.authenticate({
       access_token: user.driveConnection.accessToken,
       refresh_token: user.driveConnection.refreshToken || undefined,
     });
@@ -65,14 +66,8 @@ export async function POST(request: NextRequest) {
     console.log('🔍 Fetching files from Google Drive...');
 
     do {
-      const pageFiles = await driveService.listFiles({
-        userId: user.id,
-        id: user.driveConnection.id,
-        accessToken: user.driveConnection.accessToken,
-        refreshToken: user.driveConnection.refreshToken,
-        isConnected: user.driveConnection.isConnected,
-        connectedAt: user.driveConnection.connectedAt,
-        lastSyncAt: user.driveConnection.lastSyncAt
+      const pageFiles = await driveClient.listFiles({
+        pageToken: nextPageToken
       });
       
       if (!pageFiles || pageFiles.length === 0) {
@@ -188,7 +183,7 @@ export async function POST(request: NextRequest) {
         // Always try to create embeddings (they shouldn't exist at this point)
         try {
           console.log(`   📝 Extracting content from ${file.name}...`);
-          const content = await driveService.getFileContent(file.id);
+          const content = await driveClient.getFileContent(file.id);
           
           if (content && content.trim().length > 50) {
             console.log(`   🧠 Creating embeddings for ${file.name} (${content.length} chars)...`);

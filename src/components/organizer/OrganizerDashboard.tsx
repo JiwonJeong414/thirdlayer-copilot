@@ -24,7 +24,7 @@ import {
 import { useOrganizer } from '../../contexts/OrganizerContext';
 import { FileCluster } from '../../types/organizer';
 
-export default function DriveOrganizerDashboard({ onBack }: { onBack: () => void }) {
+export default function OrganizerDashboard({ onBack }: { onBack: () => void }) {
   const {
     isAnalyzing,
     isOrganizing,
