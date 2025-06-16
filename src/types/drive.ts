@@ -6,6 +6,8 @@ export interface IndexedFile {
   fileName: string;    // Name of the file
   chunkCount: number;  // Number of text chunks the file was split into
   lastUpdated: Date;   // Last time the file was updated
+  totalWords?: number;
+  docType?: string;
 }
 
 // Represents a search result from document search
@@ -14,13 +16,19 @@ export interface SearchResult {
   fileName: string;    // Name of the file containing the match
   fileId: string;      // Google Drive file ID
   similarity: number;  // Similarity score (0-1)
+  chunkIndex?: number;
+  metadata?: Record<string, any>;
 }
 
 // Progress tracking for drive sync operations
 export interface SyncProgress {
   totalFiles: number;      // Total number of files to process
-  processedCount: number;  // Number of files processed
-  errorCount: number;      // Number of files that failed to process
+  processedFiles: number;  // Number of files processed
+  currentFile: string;      // Current file being processed
+  embeddingsCreated: number; // Number of embeddings created
+  skipped: number;          // Number of files skipped
+  errors: number;           // Number of files that failed to process
+  isComplete: boolean;      // Whether the sync is complete
 }
 
 // Context interface for Drive functionality

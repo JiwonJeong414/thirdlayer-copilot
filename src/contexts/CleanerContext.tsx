@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import { ScanResponse, CleanerContextType } from '@/types/cleaner';
+import { ScanResponse, CleanerContextType } from '@/types';
 
 const CleanerContext = createContext<CleanerContextType | undefined>(undefined);
 

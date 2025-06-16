@@ -11,7 +11,7 @@ import {
   Target
 } from 'lucide-react';
 import { useOrganizer } from '../../contexts/OrganizerContext';
-import { OrganizerCardProps } from '../../types/organizer';
+import { OrganizerCardProps } from '@/types';
 
 export default function OrganizerCard({ onActivate }: OrganizerCardProps) {
   return (

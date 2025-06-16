@@ -22,7 +22,7 @@ import {
   Target
 } from 'lucide-react';
 import { useOrganizer } from '../../contexts/OrganizerContext';
-import { FileCluster } from '../../types/organizer';
+import { FileCluster } from '@/types';
 
 export default function OrganizerDashboard({ onBack }: { onBack: () => void }) {
   const {

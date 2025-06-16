@@ -3,7 +3,7 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { useRouter } from 'next/navigation';
-import { User, DriveConnection, AuthContextType } from '@/types/auth';
+import { User, DriveConnection, AuthContextType } from '@/types';
 
 // Create the authentication context with default values
 const AuthContext = createContext<AuthContextType>({

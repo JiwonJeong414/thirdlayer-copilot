@@ -1,18 +1,21 @@
-// src/types/auth.ts - Authentication and Drive connection types
+// src/types/auth.ts - Authentication types
 
 export interface User {
   id: string;
+  uid: string;
   email: string;
   displayName: string;
   photoURL: string;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export interface DriveConnection {
   isConnected: boolean;
   accessToken?: string;
   refreshToken?: string;
-  connectedAt?: string;
-  lastSyncAt?: string;
+  connectedAt?: Date;
+  lastSyncAt?: Date;
 }
 
 export interface AuthContextType {

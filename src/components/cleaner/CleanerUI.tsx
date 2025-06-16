@@ -15,7 +15,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { CleanerFileCard } from './CleanerFileCard';
-import { CleanableFile, SwipeDecision, CleanerUIProps } from '@/types/cleaner';
+import { CleanableFile, SwipeDecision, CleanerUIProps } from '@/types';
 import { useCleaner } from '@/contexts/CleanerContext';
 
 export default function CleanerUI({ onBack }: CleanerUIProps) {
