@@ -334,6 +334,23 @@ export async function POST(request: NextRequest) {
             }
           }
 
+          // Log organization activity
+          await prisma.organizationActivity.create({
+            data: {
+              userId,
+              clusterName: cluster.name,
+              folderName,
+              filesMoved: cluster.files.length,
+              method: method,
+              confidence: cluster.files.reduce((sum, f) => sum + f.confidence, 0) / cluster.files.length,
+              metadata: {
+                category: cluster.category,
+                keywords: cluster.files.flatMap(f => f.keywords),
+                folderId
+              }
+            }
+          });
+
           executionResults.push({
             clusterName: cluster.name,
             folderName,
