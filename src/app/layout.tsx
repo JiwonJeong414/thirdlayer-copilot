@@ -16,6 +16,9 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: 'Third Layer Copilot',
   description: 'AI Chat Interface with Ollama Integration and Google Drive Search',
+  verification: {
+    google: 'o8ZDmLHiD4VZD7qx86YnXhpTNRiNvObkqyC6PDnSDLw',
+  },
 }
 
 export default function RootLayout({

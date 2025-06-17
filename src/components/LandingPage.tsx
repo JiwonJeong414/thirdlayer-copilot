@@ -239,7 +239,10 @@ const LandingPage = () => {
       <footer className="border-t border-gray-800 py-12">
         <div className="max-w-7xl mx-auto px-6 text-center">
           <p className="text-gray-400">
-            Built with ❤️ for Google Drive power users
+            Built with ❤️ for Google Drive power users •{' '}
+            <a href="/privacy-policy" className="text-blue-400 hover:text-blue-300 transition-colors">
+              Privacy Policy
+            </a>
           </p>
         </div>
       </footer>
