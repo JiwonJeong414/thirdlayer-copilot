@@ -219,7 +219,7 @@ const Dashboard = () => {
                 <span className="text-white font-bold text-xs">TL</span>
               </motion.div>
               <div>
-                <h1 className="text-xl font-bold text-gray-900 dark:text-white">ThirdLayer</h1>
+                <h1 className="text-xl font-bold text-gray-900 dark:text-white">TripleClean</h1>
                 <p className="text-sm text-gray-500 dark:text-gray-400">Your intelligent workspace</p>
               </div>
             </div>

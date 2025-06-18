@@ -82,7 +82,7 @@ export default function ChatSidebar() {
             <div className="w-6 h-6 bg-gradient-to-r from-blue-500 via-purple-500 to-green-500 rounded flex items-center justify-center">
               <span className="text-white font-bold text-xs">TL</span>
             </div>
-            <span className="text-white font-medium">ThirdLayer Chat</span>
+            <span className="text-white font-medium">TripleClean Chat</span>
           </div>
           <button
             onClick={handleNewChat}

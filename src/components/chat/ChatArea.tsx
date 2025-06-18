@@ -55,7 +55,7 @@ export default function ChatArea() {
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <span className="text-lg font-medium text-white">
-              {currentChat ? currentChat.summary : 'ThirdLayer Chat'}
+              {currentChat ? currentChat.summary : 'TripleClean Chat'}
             </span>
             <div className="flex items-center space-x-2 text-sm text-gray-400">
               <span>Model:</span>
@@ -130,7 +130,7 @@ export default function ChatArea() {
                 <div className="flex-1">
                   <div className="flex items-center space-x-2 mb-1">
                     <span className="text-sm font-medium text-white">
-                      {msg.sender === 'user' ? 'You' : 'ThirdLayer AI'}
+                      {msg.sender === 'user' ? 'You' : 'TripleClean AI'}
                     </span>
                     <span className="text-xs text-gray-400">
                       {formatTimestamp(msg.timestamp)}
@@ -157,7 +157,7 @@ export default function ChatArea() {
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center space-x-2 mb-1">
-                    <span className="text-sm font-medium text-white">ThirdLayer AI</span>
+                    <span className="text-sm font-medium text-white">TripleClean AI</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
