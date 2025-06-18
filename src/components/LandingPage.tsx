@@ -33,12 +33,20 @@ const LandingPage = () => {
             <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg"></div>
             <span className="text-xl font-bold">TripleClean</span>
           </div>
-          <button
-            onClick={() => router.push('/login')}
-            className="px-6 py-2 bg-white text-gray-900 rounded-full font-medium hover:bg-gray-100 transition-colors"
-          >
-            Get Started
-          </button>
+          <div className="flex items-center space-x-4">
+            <a
+              href="/privacy-policy"
+              className="text-gray-300 hover:text-white transition-colors text-sm"
+            >
+              Privacy Policy
+            </a>
+            <button
+              onClick={() => router.push('/login')}
+              className="px-6 py-2 bg-white text-gray-900 rounded-full font-medium hover:bg-gray-100 transition-colors"
+            >
+              Get Started
+            </button>
+          </div>
         </div>
       </nav>
 

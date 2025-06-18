@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   title: 'TripleClean',
   description: 'AI Chat Interface with Ollama Integration and Google Drive Search',
   verification: {
-    google: 'o8ZDmLHiD4VZD7qx86YnXhpTNRiNvObkqyC6PDnSDLw',
+    google: 'v7WqphdspBSJ5ecQuGcFAXwZatiO18m9Qclf8zyK1I8',
   },
 }
 
